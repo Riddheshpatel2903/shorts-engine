@@ -236,7 +236,17 @@ with st.sidebar:
         with c_yt_mode1:
             yt_cid = st.text_input("Google Client ID:", value=publisher.creds["youtube"].get("client_id", ""), key="yt_cid_in")
             yt_sec = st.text_input("Google Client Secret:", value=publisher.creds["youtube"].get("client_secret", ""), type="password", key="yt_sec_in")
-            yt_redir = st.text_input("Authorized Redirect URI:", value="http://localhost:8501/", help="Must match the Authorized redirect URI in Google Cloud Console", key="yt_redir_in")
+            yt_redir = st.text_input("Authorized Redirect URI:", value="https://shorts-engine.streamlit.app/", help="Must match the Authorized redirect URI in Google Cloud Console", key="yt_redir_in")
+
+            col_preset1, col_preset2 = st.columns(2)
+            with col_preset1:
+                if st.button("🌐 Use Streamlit Cloud URI", key="btn_preset_cloud", use_container_width=True):
+                    st.session_state["yt_redir_in"] = "https://shorts-engine.streamlit.app/"
+                    st.rerun()
+            with col_preset2:
+                if st.button("💻 Use Localhost URI", key="btn_preset_local", use_container_width=True):
+                    st.session_state["yt_redir_in"] = "http://localhost:8501/"
+                    st.rerun()
 
             # Check if user was redirected back from Google with code in URL
             url_code = st.query_params.get("code", "")
@@ -265,19 +275,18 @@ with st.sidebar:
                 else:
                     st.warning("Please provide Client ID, Secret, and Authorization Code.")
 
-            with st.expander("⚠️ Fix 'Error 400: redirect_uri_mismatch' in 30 seconds", expanded=True):
+            with st.expander("⚠️ Google Cloud Console Setup (Exact Redirect URIs)", expanded=False):
                 st.markdown(f"""
-                **Why this happened:** Google requires the redirect URI sent in the link to **exactly match** what is listed under **Authorized redirect URIs** in your Google Cloud Console.
-
-                **30-Second Fix in Google Cloud Console:**
+                **For Streamlit Cloud (`https://shorts-engine.streamlit.app/`):**
                 1. Open [Google Cloud Console &rarr; Credentials](https://console.cloud.google.com/apis/credentials).
                 2. Click on your **OAuth 2.0 Client ID** (e.g. `ViralShorts Uploader`).
-                3. Scroll down to **Authorized redirect URIs** and click **+ ADD URI**.
-                4. Add both of these exact URIs:
-                   - `http://localhost:8501/`
-                   - `http://localhost:8501`
+                3. Under **Authorized redirect URIs**, click **+ ADD URI** and add:
+                   - `https://shorts-engine.streamlit.app/`
+                   - `https://shorts-engine.streamlit.app`
+                4. Under **Authorized JavaScript origins**, click **+ ADD URI** and add:
+                   - `https://shorts-engine.streamlit.app`
                 5. Click **SAVE** at the bottom of Google Cloud Console.
-                6. Come back and click the **[👉 Click here to Authorize YouTube Account]** link above — it will sign in immediately without error!
+                6. Click **[👉 Click here to Authorize YouTube Account]** above — you will sign in and be redirected back seamlessly!
                 """)
 
         with c_yt_mode2:
@@ -317,13 +326,24 @@ with st.sidebar:
                 else:
                     st.warning("Please provide App ID, App Secret, and User Token.")
 
-            with st.expander("📖 How to get Meta App ID, Secret & Token (2 mins)", expanded=False):
+            with st.expander("📖 How to connect Instagram via Meta for Developers (2 mins)", expanded=False):
                 st.markdown("""
-                1. Go to [Meta for Developers](https://developers.facebook.com/).
-                2. Click **My Apps > Create App** (Select type: **Business**). Add **Instagram Graph API**.
-                3. Go to **Settings > Basic** to copy **App ID** and **App Secret**.
-                4. Go to **Tools > Graph API Explorer**, select your app, check permissions (`instagram_basic`, `instagram_content_publish`, `pages_show_list`), and click **Generate Access Token**.
-                5. Paste the token above — the studio will automatically exchange it for a **60-day permanent token** and find your Instagram Account ID!
+                **Redirect URI for Facebook / Meta App Settings:**
+                - `https://shorts-engine.streamlit.app/`
+                - `https://shorts-engine.streamlit.app`
+
+                **Step-by-Step Setup:**
+                1. Go to [Meta for Developers](https://developers.facebook.com/) &rarr; **My Apps**.
+                2. Create an App (Type: **Business**). Under App Settings > Basic:
+                   - **App Domains:** `streamlit.app`
+                   - **Site URL:** `https://shorts-engine.streamlit.app/`
+                3. In the sidebar under **Facebook Login** (or **Instagram**), click **Settings**:
+                   - Put `https://shorts-engine.streamlit.app/` in **Valid OAuth Redirect URIs**.
+                4. Go to **Tools > Graph API Explorer**:
+                   - Select your Meta App.
+                   - Add permissions: `instagram_basic`, `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`.
+                   - Click **Generate Access Token**.
+                5. Paste the App ID, App Secret, and Token above — click **"Exchange for 60-Day Token"**!
                 """)
 
         with c_ig_mode2:
