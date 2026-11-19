@@ -1,42 +1,37 @@
 """
-OmniVoice & Neural Text-to-Speech Engine.
-Integrates with the k2-fsa/OmniVoice multilingual zero-shot voice cloning framework
-with high-fidelity multi-voice fallback for fast local generation.
+Neural Text-to-Speech Engine using Edge TTS & Studio Neural Voices.
+Generates human-like, studio-quality voiceover narration for 9:16 Shorts
+with zero paid API keys and zero cloud configuration.
 """
 
 import os
 import re
 import json
 import logging
+import asyncio
 import subprocess
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 from config import PROCESSING_DIR
 
-logger = logging.getLogger("ViralShortsEngine.OmniVoiceTTS")
+logger = logging.getLogger("ViralShortsEngine.NeuralTTS")
+
+# High-retention neural voices
+VOICE_PROFILES = {
+    "deep_male": "en-US-ChristopherNeural",       # Deep, authoritative documentary/gaming voice
+    "high_energy": "en-US-GuyNeural",             # High energy YouTuber / streamer voice
+    "female_pro": "en-US-AriaNeural",             # Expressive, engaging female creator
+    "indian_male": "en-IN-PrabhatNeural",         # Indian English narrator
+    "hindi_male": "hi-IN-MadhurNeural"            # Hindi gaming / commentary
+}
 
 
-class OmniVoiceTTS:
-    """TTS engine supporting OmniVoice zero-shot voice cloning and neural narration."""
+class NeuralTTS:
+    """Production Neural Text-to-Speech engine powered by Microsoft Edge Neural models."""
 
     def __init__(self):
-        self.omnivoice_model = None
-        self._init_omnivoice()
-
-    def _init_omnivoice(self):
-        """Attempts to load OmniVoice from python environment if installed."""
-        try:
-            from omnivoice import OmniVoice
-            import torch
-            device = "cuda:0" if torch.cuda.is_available() else "cpu"
-            dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-            logger.info("Initializing k2-fsa/OmniVoice model...")
-            self.omnivoice_model = OmniVoice.from_pretrained("k2-fsa/OmniVoice", device_map=device, dtype=dtype)
-            logger.info("OmniVoice loaded successfully.")
-        except Exception as e:
-            logger.info(f"OmniVoice python package not active ({e}). Operating in neural fallback mode.")
-            self.omnivoice_model = None
+        self.default_voice = "en-US-ChristopherNeural"
 
     def synthesize(
         self,
@@ -48,36 +43,61 @@ class OmniVoiceTTS:
         speed: float = 1.15
     ) -> Path:
         """
-        Synthesizes speech audio from text using OmniVoice (or high-fidelity local synthesis).
-        Supports zero-shot voice cloning when reference_audio is provided.
+        Synthesizes crystal-clear neural speech audio from text.
+        Converts output automatically into high-fidelity WAV format.
         """
         output_wav = Path(output_wav)
         output_wav.parent.mkdir(parents=True, exist_ok=True)
         clean_text = re.sub(r"[\*\#\_]", "", text).strip()
+        if not clean_text:
+            clean_text = "Check out this insane viral moment."
 
-        # 1. Try OmniVoice Zero-Shot Inference
-        if self.omnivoice_model is not None:
+        voice_name = VOICE_PROFILES.get(voice_profile, voice_profile)
+        if not voice_name.endswith("Neural"):
+            voice_name = self.default_voice
+
+        rate_pct = f"+{int((speed - 1.0) * 100)}%" if speed >= 1.0 else f"{int((speed - 1.0) * 100)}%"
+        temp_mp3 = output_wav.with_suffix(".mp3")
+
+        # 1. Primary: Edge Neural TTS (Natural, lifelike human voice)
+        try:
+            import edge_tts
+
+            async def _run_edge():
+                communicate = edge_tts.Communicate(clean_text, voice_name, rate=rate_pct)
+                await communicate.save(str(temp_mp3))
+
             try:
-                import soundfile as sf
-                if reference_audio and os.path.exists(reference_audio):
-                    logger.info(f"OmniVoice zero-shot cloning from: {reference_audio}")
-                    audio = self.omnivoice_model.generate_with_reference(
-                        text=clean_text,
-                        reference_audio=reference_audio,
-                        language=language
-                    )
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as pool:
+                        pool.submit(asyncio.run, _run_edge()).result()
                 else:
-                    audio = self.omnivoice_model.generate(
-                        text=clean_text,
-                        language=language
-                    )
-                sf.write(str(output_wav), audio, samplerate=24000)
-                logger.info(f"OmniVoice synthesized audio to: {output_wav}")
-                return output_wav
-            except Exception as e:
-                logger.warning(f"OmniVoice inference error ({e}). Falling back to neural synthesizer.")
+                    asyncio.run(_run_edge())
+            except Exception:
+                asyncio.run(_run_edge())
 
-        # 2. Windows PowerShell Speech Synthesis Fallback
+            if temp_mp3.exists() and temp_mp3.stat().st_size > 1000:
+                # Convert MP3 to 24000Hz WAV with FFmpeg
+                cmd_conv = [
+                    "ffmpeg", "-y",
+                    "-i", str(temp_mp3),
+                    "-ar", "24000",
+                    "-ac", "1",
+                    str(output_wav)
+                ]
+                subprocess.run(cmd_conv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                try:
+                    temp_mp3.unlink()
+                except Exception:
+                    pass
+                logger.info(f"Edge TTS synthesized {output_wav.name} ({voice_name})")
+                return output_wav
+        except Exception as e:
+            logger.warning(f"Edge TTS synthesis error ({e}). Attempting offline fallback.")
+
+        # 2. Secondary Fallback: Windows PowerShell Speech Synthesis
         ps_script = f"""
         Add-Type -AssemblyName System.Speech
         $s = New-Object System.Speech.Synthesis.SpeechSynthesizer
@@ -93,11 +113,9 @@ class OmniVoiceTTS:
         except Exception as e:
             logger.debug(f"PowerShell TTS failed: {e}")
 
-        # 3. Clean Tone Audio Generator (Zero-fail fallback)
-        # Calculates realistic speaking duration based on word count (~150 WPM)
+        # 3. Tertiary Zero-Fail Fallback: Clean Synthesized Tone Audio
         word_count = len(clean_text.split())
-        calc_duration = max(2.5, (word_count / 160.0) * 60.0)
-        
+        calc_duration = max(3.0, (word_count / 160.0) * 60.0)
         cmd = [
             "ffmpeg", "-y",
             "-f", "lavfi",
@@ -111,12 +129,13 @@ class OmniVoiceTTS:
 
     def get_available_voices(self) -> List[Dict[str, str]]:
         return [
-            {"id": "omnivoice_deep", "name": "OmniVoice Deep Male Narrator (UPSC / Case Studies)", "lang": "en-IN / hi"},
-            {"id": "omnivoice_hype", "name": "OmniVoice High-Energy Streamer (Gaming / Drama)", "lang": "en / Hinglish"},
-            {"id": "omnivoice_docu", "name": "OmniVoice Authoritative Documentary (Geopolitics)", "lang": "en / Global"},
-            {"id": "omnivoice_clone", "name": "OmniVoice Custom Voice Clone (Upload .wav sample)", "lang": "Custom Reference"}
+            {"id": "deep_male", "name": "🎙️ Christopher (Deep Authoritative Documentary)", "lang": "en-US"},
+            {"id": "high_energy", "name": "🔥 Guy (High Energy YouTuber & Gaming)", "lang": "en-US"},
+            {"id": "female_pro", "name": "✨ Aria (Engaging Storyteller & Reels)", "lang": "en-US"},
+            {"id": "indian_male", "name": "🇮🇳 Prabhat (Indian Gaming & Commentary)", "lang": "en-IN"},
+            {"id": "hindi_male", "name": "⚡ Madhur (Hindi Viral Narrator)", "lang": "hi-IN"}
         ]
 
 
 # Singleton instance
-tts_engine = OmniVoiceTTS()
+tts_engine = NeuralTTS()

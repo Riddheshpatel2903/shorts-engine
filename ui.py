@@ -225,175 +225,55 @@ with st.sidebar:
 
     st.divider()
 
-    # Social Accounts Connection & OAuth Auto-Publishing
-    with st.expander("Connected Accounts & Auto-Publish (OAuth Generator)", expanded=False):
-        # 1. YouTube Shorts Connection
-        st.markdown("#### YouTube Shorts")
-        yt_conn = social_status["youtube_connected"]
-        st.markdown(f"Status: **{'🟢 Connected (Auto-Refreshing)' if yt_conn else '⚪ Not Connected'}**")
-        
-        c_yt_mode1, c_yt_mode2 = st.tabs(["⚡ Auto-Generate via Client ID & Secret", "Manual Token"])
-        with c_yt_mode1:
-            yt_cid = st.text_input("Google Client ID:", value=publisher.creds["youtube"].get("client_id", ""), key="yt_cid_in")
-            yt_sec = st.text_input("Google Client Secret:", value=publisher.creds["youtube"].get("client_secret", ""), type="password", key="yt_sec_in")
-            if "yt_target_uri" not in st.session_state:
-                st.session_state.yt_target_uri = "https://shorts-engine.streamlit.app/"
+    # Automated Social Media Publishing (Playwright Browser Sessions)
+    with st.expander("🚀 Automated Social Publishing (Browser Playwright)", expanded=False):
+        st.caption("Zero API keys, zero developer setup. Click to log in once in standard browser; your session stays saved locally!")
 
-            def set_cloud_uri():
-                st.session_state.yt_target_uri = "https://shorts-engine.streamlit.app/"
+        # 1. YouTube Shorts
+        st.markdown("#### 📺 YouTube Shorts")
+        yt_conn = social_status.get("youtube_connected", False)
+        st.markdown(f"Status: **{'🟢 Ready (Logged In)' if yt_conn else '⚪ Not Logged In'}**")
 
-            def set_local_uri():
-                st.session_state.yt_target_uri = "http://localhost:8501/"
-
-            col_preset1, col_preset2 = st.columns(2)
-            with col_preset1:
-                st.button("🌐 Use Streamlit Cloud URI", on_click=set_cloud_uri, key="btn_preset_cloud", use_container_width=True)
-            with col_preset2:
-                st.button("💻 Use Localhost URI", on_click=set_local_uri, key="btn_preset_local", use_container_width=True)
-
-            yt_redir = st.text_input(
-                "Authorized Redirect URI:",
-                value=st.session_state.yt_target_uri,
-                help="Must match the Authorized redirect URI in Google Cloud Console"
+        c_yt_act1, c_yt_act2 = st.columns([1.5, 1])
+        with c_yt_act1:
+            if st.button("🌐 Open YouTube Login Window", key="btn_yt_login_pw", use_container_width=True):
+                res = publisher.open_login_browser("youtube")
+                st.info(res.get("message", "Browser window opened."))
+        with c_yt_act2:
+            yt_priv = st.selectbox(
+                "Upload Privacy:",
+                options=["public", "unlisted", "private"],
+                index=0 if social_status.get("youtube_privacy") == "public" else (1 if social_status.get("youtube_privacy") == "unlisted" else 2),
+                key="yt_priv_select"
             )
+            if yt_priv != social_status.get("youtube_privacy"):
+                publisher.update_settings(youtube_privacy=yt_priv)
 
-            # Check if user was redirected back from Google with code in URL
-            url_code = st.query_params.get("code", "")
-            if url_code:
-                st.info("🟢 Detected Google Authorization Code from browser redirect!")
-
-            if yt_cid and yt_cid.strip():
-                auth_link = publisher.generate_youtube_auth_url(yt_cid, redirect_uri=yt_redir)
-                st.markdown(f"[👉 **Click here to Authorize YouTube Account**]({auth_link})")
-                st.caption(f"Requires '{yt_redir}' in your Google Cloud Console Authorized URIs.")
-
-            code_input = st.text_input("Paste Google Authorization Code or Redirect URL:", value=url_code if url_code else "", key="yt_auth_code_in")
-            if st.button("Generate & Save YouTube Token", use_container_width=True, key="btn_yt_oauth"):
-                if yt_cid and yt_sec and code_input:
-                    with st.spinner("Exchanging authorization code with Google..."):
-                        t_res = publisher.exchange_youtube_code(yt_cid, yt_sec, code_input, redirect_uri=yt_redir)
-                        if t_res.get("success"):
-                            st.success("YouTube successfully connected! Access tokens will auto-refresh indefinitely.")
-                            try:
-                                st.query_params.clear()
-                            except Exception:
-                                pass
-                            st.rerun()
-                        else:
-                            st.error(f"Error: {t_res.get('error')}")
-                else:
-                    st.warning("Please provide Client ID, Secret, and Authorization Code.")
-
-            with st.expander("⚠️ Google Cloud Console Setup (Exact Redirect URIs)", expanded=False):
-                st.markdown(f"""
-                **For Streamlit Cloud (`https://shorts-engine.streamlit.app/`):**
-                1. Open [Google Cloud Console &rarr; Credentials](https://console.cloud.google.com/apis/credentials).
-                2. Click on your **OAuth 2.0 Client ID** (e.g. `ViralShorts Uploader`).
-                3. Under **Authorized redirect URIs**, click **+ ADD URI** and add:
-                   - `https://shorts-engine.streamlit.app/`
-                   - `https://shorts-engine.streamlit.app`
-                4. Under **Authorized JavaScript origins**, click **+ ADD URI** and add:
-                   - `https://shorts-engine.streamlit.app`
-                5. Click **SAVE** at the bottom of Google Cloud Console.
-                6. Click **[👉 Click here to Authorize YouTube Account]** above — you will sign in and be redirected back seamlessly!
-                """)
-
-        with c_yt_mode2:
-            yt_tok = st.text_input("Direct Access Token / Key:", value=publisher.creds["youtube"].get("access_token", ""), type="password", key="yt_tok_manual")
-            yt_chan = st.text_input("Channel ID (Optional):", value=publisher.creds["youtube"].get("channel_id", ""), key="yt_chan_manual")
-            if st.button("Save Manual YouTube Token", use_container_width=True, key="btn_save_yt_manual"):
-                publisher.update_credentials(yt_token=yt_tok, yt_channel=yt_chan)
-                st.success("YouTube token saved.")
-                st.rerun()
-
-        yt_priv = st.selectbox("YouTube Upload Privacy:", options=["public", "unlisted", "private"], index=0, key="yt_priv_select")
-        if yt_priv != publisher.creds["youtube"].get("privacy"):
-            publisher.update_credentials(yt_privacy=yt_priv)
+        st.caption("💡 Click 'Open YouTube Login Window', sign in to Google/YouTube Studio, then close the browser window.")
 
         st.divider()
 
-        # 2. Instagram Reels Connection
-        st.markdown("#### Instagram Reels")
-        ig_conn = social_status["instagram_connected"]
-        st.markdown(f"Status: **{'🟢 Connected' if ig_conn else '⚪ Not Connected'}** ({social_status.get('instagram_user', '')})")
-        
-        c_ig_mode1, c_ig_mode2 = st.tabs(["⚡ Auto-Generate via App ID & Secret", "Manual Token"])
-        with c_ig_mode1:
-            ig_aid = st.text_input("Meta App ID:", value=publisher.creds["instagram"].get("app_id", ""), key="ig_aid_in")
-            ig_sec = st.text_input("Meta App Secret:", value=publisher.creds["instagram"].get("app_secret", ""), type="password", key="ig_sec_in")
-            ig_short_tok = st.text_input("User Token (from Meta Graph Explorer):", placeholder="Paste temporary user token...", type="password", key="ig_short_in")
+        # 2. Instagram Reels
+        st.markdown("#### 📸 Instagram Reels")
+        ig_conn = social_status.get("instagram_connected", False)
+        st.markdown(f"Status: **{'🟢 Ready (Logged In)' if ig_conn else '⚪ Not Logged In'}**")
 
-            if st.button("Exchange for 60-Day Token & Find Account ID", use_container_width=True, key="btn_ig_oauth"):
-                if ig_aid and ig_sec and ig_short_tok:
-                    with st.spinner("Exchanging token & detecting Instagram Professional Account ID..."):
-                        ig_res = publisher.exchange_instagram_long_lived_token(ig_aid, ig_sec, ig_short_tok)
-                        if ig_res.get("success"):
-                            st.success(f"Connected to Instagram! Account ID: {ig_res.get('account_id', 'Discovered')}")
-                            st.rerun()
-                        else:
-                            st.error(f"Error: {ig_res.get('error')}")
-                else:
-                    st.warning("Please provide App ID, App Secret, and User Token.")
+        if st.button("🌐 Open Instagram Login Window", key="btn_ig_login_pw", use_container_width=True):
+            res = publisher.open_login_browser("instagram")
+            st.info(res.get("message", "Browser window opened."))
 
-            with st.expander("📖 How to connect Instagram via Meta for Developers (2 mins)", expanded=False):
-                st.markdown("""
-                **Redirect URI for Facebook / Meta App Settings:**
-                - `https://shorts-engine.streamlit.app/`
-                - `https://shorts-engine.streamlit.app`
-
-                **Step-by-Step Setup:**
-                1. Go to [Meta for Developers](https://developers.facebook.com/) &rarr; **My Apps**.
-                2. Create an App (Type: **Business**). Under App Settings > Basic:
-                   - **App Domains:** `streamlit.app`
-                   - **Site URL:** `https://shorts-engine.streamlit.app/`
-                3. In the sidebar under **Facebook Login** (or **Instagram**), click **Settings**:
-                   - Put `https://shorts-engine.streamlit.app/` in **Valid OAuth Redirect URIs**.
-                4. Go to **Tools > Graph API Explorer**:
-                   - Select your Meta App.
-                   - Add permissions: `instagram_basic`, `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`.
-                   - Click **Generate Access Token**.
-                5. Paste the App ID, App Secret, and Token above — click **"Exchange for 60-Day Token"**!
-                """)
-
-        with c_ig_mode2:
-            ig_manual_tok = st.text_input("Instagram Access Token:", value=publisher.creds["instagram"].get("access_token", ""), type="password", key="ig_tok_manual")
-            ig_manual_acc = st.text_input("Instagram Account ID:", value=publisher.creds["instagram"].get("account_id", ""), key="ig_acc_manual")
-            if st.button("Save Manual Instagram Token", use_container_width=True, key="btn_save_ig_manual"):
-                publisher.update_credentials(ig_token=ig_manual_tok, ig_account_id=ig_manual_acc)
-                st.success("Instagram token saved.")
-                st.rerun()
+        st.caption("💡 Click 'Open Instagram Login Window', log into your Instagram account, then close the browser window.")
 
         st.divider()
-        auto_post_toggle = st.checkbox("Auto-publish to YouTube & Instagram upon render", value=social_status["auto_publish"], key="chk_autopub")
-        if auto_post_toggle != social_status["auto_publish"]:
-            publisher.update_credentials(auto_publish=auto_post_toggle)
+
+        # Auto-publish toggle
+        auto_post_toggle = st.checkbox("Auto-publish to YouTube & Instagram upon render", value=social_status.get("auto_publish", False), key="chk_autopub")
+        if auto_post_toggle != social_status.get("auto_publish"):
+            publisher.update_settings(auto_publish_on_render=auto_post_toggle)
             st.rerun()
 
-        st.divider()
-        st.markdown("##### 💾 Sync Credentials between Cloud & PC")
-        c_sync1, c_sync2 = st.columns(2)
-        with c_sync1:
-            creds_data = json.dumps(publisher.creds, indent=2)
-            st.download_button(
-                label="📥 Export Config",
-                data=creds_data,
-                file_name="social_credentials.json",
-                mime="application/json",
-                use_container_width=True,
-                help="Download credentials to transfer between Streamlit Cloud and local PC"
-            )
-        with c_sync2:
-            uploaded_cred = st.file_uploader("Upload Config:", type=["json"], label_visibility="collapsed", key="cred_uploader")
-            if uploaded_cred is not None:
-                try:
-                    uploaded_json = json.load(uploaded_cred)
-                    if isinstance(uploaded_json, dict) and ("youtube" in uploaded_json or "instagram" in uploaded_json):
-                        publisher.creds = uploaded_json
-                        publisher._save_credentials()
-                        st.success("Credentials synced successfully!")
-                        st.rerun()
-                except Exception as e:
-                    st.error(f"Invalid config: {e}")
+        if st.button("🔄 Refresh Login Status", use_container_width=True, key="btn_refresh_status"):
+            st.rerun()
 
     # Disk Storage Manager
     with st.expander("Disk Storage & Cleanup", expanded=False):
