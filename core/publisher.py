@@ -99,16 +99,24 @@ class SocialPublisher:
 
     def exchange_youtube_code(self, client_id: str, client_secret: str, auth_code: str, redirect_uri: str = "http://localhost:8501/") -> Dict[str, Any]:
         """Exchanges Google authorization code for permanent refresh token and access token."""
-        # Clean auth_code if user pasted full redirected URL
+        # Clean and sanitize auth_code aggressively
         clean_code = auth_code.strip()
         if "code=" in clean_code:
-            match = re.search(r"[?&]code=([^&]+)", clean_code)
+            match = re.search(r"code=([^&#\s]+)", clean_code)
             if match:
-                clean_code = urllib.parse.unquote(match.group(1))
-            else:
-                match_simple = re.search(r"code=([^&]+)", clean_code)
-                if match_simple:
-                    clean_code = urllib.parse.unquote(match_simple.group(1))
+                clean_code = match.group(1)
+        
+        # Strip any accidental &scope= or # hash fragment or spaces
+        if "&" in clean_code:
+            clean_code = clean_code.split("&")[0].strip()
+        if "#" in clean_code:
+            clean_code = clean_code.split("#")[0].strip()
+        
+        # Ensure it is unquoted once so urlencode doesn't double-encode (%252F instead of %2F)
+        clean_code = urllib.parse.unquote(clean_code).strip()
+
+        # Clean redirect_uri (strip whitespace and ensure exact matching)
+        clean_redirect = redirect_uri.strip()
 
         url = "https://oauth2.googleapis.com/token"
         data = urllib.parse.urlencode({
@@ -116,7 +124,7 @@ class SocialPublisher:
             "client_secret": client_secret.strip(),
             "code": clean_code,
             "grant_type": "authorization_code",
-            "redirect_uri": redirect_uri.strip()
+            "redirect_uri": clean_redirect
         }).encode("utf-8")
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/x-www-form-urlencoded"})
         try:
