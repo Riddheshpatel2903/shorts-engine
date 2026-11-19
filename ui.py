@@ -342,11 +342,66 @@ if st.session_state.nav_tab == "Clip Studio":
         source_url_target = None
 
         with c_in_type1:
-            url_val = st.text_input("Enter Video or Stream URL:", placeholder="https://www.youtube.com/watch?v=...", label_visibility="collapsed")
-            if st.button("Analyze Video Stream", type="primary"):
-                if url_val and url_val.strip():
-                    with st.spinner("Downloading stream metadata and extracting audio..."):
+            url_val = st.text_input(
+                "Enter Video or Stream URL:",
+                placeholder="https://www.youtube.com/watch?v=... (YouTube Live, Twitch, Kick, or VOD)",
+                label_visibility="collapsed"
+            )
+
+            c_mode_col1, c_mode_col2 = st.columns([1.2, 0.8])
+            with c_mode_col1:
+                capture_mode = st.radio(
+                    "Ingestion Strategy:",
+                    options=["⚡ Live Rolling Fragment (Recommended)", "📥 Full Video Download"],
+                    horizontal=True,
+                    help="Live Rolling Fragment grabs 60s–300s directly from the live stream in ~3 seconds without downloading multi-hour broadcasts."
+                )
+            with c_mode_col2:
+                if capture_mode.startswith("⚡"):
+                    frag_duration = st.selectbox(
+                        "Fragment Window:",
+                        options=[60, 90, 120, 180, 300],
+                        index=2,  # default 120s (2 mins)
+                        format_func=lambda s: f"{s}s ({s//60}m {s%60}s) Rolling Buffer" if s >= 60 else f"{s}s"
+                    )
+                else:
+                    frag_duration = 120
+
+            col_btn1, col_btn2 = st.columns([1.2, 0.8])
+            with col_btn1:
+                if capture_mode.startswith("⚡"):
+                    btn_text = f"⚡ Grab Live Fragment ({frag_duration}s) & Auto-Clip"
+                else:
+                    btn_text = "📥 Download & Analyze Full Video"
+                do_analyze = st.button(btn_text, type="primary", use_container_width=True)
+
+            with col_btn2:
+                do_inspect = st.button("🔍 Check Stream Info", use_container_width=True)
+
+            if do_inspect and url_val and url_val.strip():
+                with st.spinner("Checking live broadcast status..."):
+                    try:
                         downloader = VideoDownloader()
+                        info_check = downloader.get_info(url_val.strip())
+                        live_badge = "🔴 LIVE BROADCAST NOW" if info_check.get("is_live") else "📼 Pre-recorded / VOD"
+                        st.info(
+                            f"**{live_badge}** | **Title:** `{info_check.get('title')[:60]}` | "
+                            f"**Streamer:** `{info_check.get('uploader')}` | "
+                            f"**Duration:** `{format_time(info_check.get('duration', 0))}` | "
+                            f"**HLS Live Buffer:** {'⚡ Active (Fast Fragment Ready)' if info_check.get('stream_url') else 'Standard Video'}"
+                        )
+                    except Exception as e:
+                        st.error(f"Could not inspect stream URL: {e}")
+
+            if do_analyze and url_val and url_val.strip():
+                downloader = VideoDownloader()
+                if capture_mode.startswith("⚡"):
+                    with st.spinner(f"Snatching {frag_duration}s live rolling fragment without downloading full stream..."):
+                        meta = downloader.capture_live_fragment(url_val.strip(), duration_sec=frag_duration)
+                        source_input_path = meta["filepath"]
+                        source_url_target = meta
+                else:
+                    with st.spinner("Downloading stream metadata and extracting audio..."):
                         meta = downloader.download(url_val.strip())
                         source_input_path = meta["filepath"]
                         source_url_target = meta
@@ -408,7 +463,8 @@ if st.session_state.nav_tab == "Clip Studio":
         col_rev_left, col_rev_right = st.columns([1.2, 0.8])
 
         with col_rev_left:
-            st.markdown(f"**Source:** `{meta.get('title', 'Video')[:50]}` | **Duration:** `{format_time(total_dur)}`")
+            src_tag = "🔴 [LIVE FRAGMENT]" if (meta.get("is_fragment") or meta.get("is_live")) else "🎬 [VOD]"
+            st.markdown(f"**Source:** `{src_tag}` `{meta.get('title', 'Video')[:50]}` | **Duration:** `{format_time(total_dur)}`")
             layout_cls = analysis.get("layout", {}).get("classification", "GENERAL")
             st.markdown(f"**Detected Camera Layout:** `{layout_cls}`")
 
