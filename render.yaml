@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: viral-shorts-studio
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: standard
+    region: oregon
+    autoDeploy: true
+    envVars:
+      - key: HF_HUB_DISABLE_XET
+        value: "1"
+      - key: HF_HUB_ENABLE_HF_TRANSFER
+        value: "0"

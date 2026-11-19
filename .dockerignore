@@ -1,0 +1,14 @@
+workspace/downloads/*
+!workspace/downloads/test_sample.mp4
+workspace/processing/*
+workspace/output/*
+logs/*
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.git
+.gitignore
+.env
+.vscode/
+run.bat
