@@ -203,26 +203,53 @@ class AIBrain:
                 default_tags = "#geopolitics #india #news #strategy #worldaffairs #shorts #reels"
 
         elif niche_upper == "GAMING":
-            if any(k in t_low for k in ["jonathan", "godlike", "superchat", "soul", "reply"]):
-                title = "Jonathan Bhai Live Reply on Superchat Controversy! 🤯 #Shorts"
-                hook = "JONATHAN UNFILTERED REPLY 💬🔥"
-                caption = "Bhai ne stream pe seedha bina filter reply de diya! Roster controversy ka pura sach.\n\nWhose side are you on: GodLike or Soul? Comment below! 👇"
-                default_tags = "#jonathan #jonathangaming #godlike #teamsoul #bgmi #bgmisports #shorts"
-            elif any(k in t_low for k in ["scout", "clutch", "1v4", "m416", "bgis"]):
-                title = "Scout OP Insane 1v4 M416 Clutch in Tournament Lobby! 🎯🔥 #Shorts"
-                hook = "SCOUT 1v4 SQUAD WIPE 🎯💥"
-                caption = "Full squad wipe in the last circle! Scout screaming 'Lobby khali kar di!' on mic.\n\nRate this clutch out of 10 in the comments! 👇"
-                default_tags = "#scoutop #teamxspark #bgmi #bgmiclutch #1v4clutch #esports #shorts"
+            # 1. BGMI New Event / Update / Mode / Leaks
+            if any(k in t_low for k in ["bgmi", "battlegrounds"]) and any(k in t_low for k in ["event", "update", "mode", "leak", "rp", "crate", "pass", "dinosaur", "shadow", "winter", "patch"]):
+                clean_h = title_hint.strip() if title_hint else "BGMI New Event Update"
+                title = f"{clean_h} 🔥 #Shorts" if not clean_h.endswith("#Shorts") else clean_h
+                hook = "BGMI NEW EVENT UPDATE 🔥"
+                caption = f"{clean_h} is finally here with insane free rewards and new mode! Tag your BGMI squad below! 👇"
+                default_tags = "#bgmi #bgminewupdate #bgmievents #bgmiindia #pubgmobile #battlegroundsmobileindia #gaming #shorts #viral #reels"
+
+            # 2. BGMI Clutch / Esports / Tournament
+            elif any(k in t_low for k in ["bgmi", "pubg"]) and any(k in t_low for k in ["clutch", "1v4", "1v3", "esports", "scout", "jonathan", "finals", "tourney", "godlike", "soul"]):
+                clean_h = title_hint.strip() if title_hint else "Insane 1v4 BGMI Clutch"
+                title = f"{clean_h} 🎯🔥 #Shorts" if not clean_h.endswith("#Shorts") else clean_h
+                hook = "INSANE 1v4 CLUTCH 🎯🔥"
+                caption = f"{clean_h}! Clean squad wipe in the final circle. Rate this clutch from 1 to 10 in the comments! 👇"
+                default_tags = "#bgmi #bgmiclutch #1v4 #bgmisports #jonathangaming #scoutop #gaming #esports #shorts #viral #reels"
+
+            # 3. Superchat Controversy & Streamer Rebuttal
+            elif any(k in t_low for k in ["superchat", "donation", "reply", "controversy", "drama", "roast", "clapback", "allegation"]):
+                clean_h = title_hint.strip() if title_hint else "Streamer Savage Reply to Superchat"
+                title = f"{clean_h} 💬🔥 #Shorts" if not clean_h.endswith("#Shorts") else clean_h
+                hook = "STREAMER UNFILTERED REPLY 💬🔥"
+                caption = f"{clean_h}! Bro sent this Superchat live and got an instant reaction. What's your take on this? Comment below! 👇"
+                default_tags = "#superchat #streamer #streamermoments #twitchclips #streamerhighlight #viralmoments #shorts #viral #reels"
+
+            # 4. Top Streamer Live Moments (Speed, Kai Cenat, xQc)
+            elif any(k in t_low for k in ["speed", "kai", "ishowspeed", "cenat", "xqc"]):
+                clean_h = title_hint.strip() if title_hint else "Top Streamer Goes Wild Live"
+                title = f"{clean_h} ⚡🤯 #Shorts" if not clean_h.endswith("#Shorts") else clean_h
+                hook = "STREAMER GOES WILD ⚡🤯"
+                caption = f"{clean_h}! This live stream moment was completely unhinged 😂 Did you see this live? Tell us below! 👇"
+                default_tags = "#ishowspeed #kaicenat #streamer #twitch #livestream #funnyclips #viral #shorts #reels"
+
+            # 5. GTA 6 & Rockstar Next-Gen Game
             elif any(k in t_low for k in ["gta 6", "gta vi", "vice city", "physics", "rockstar"]):
-                title = "GTA 6 Next-Gen Gameplay: Streamers Shocked Reaction! 🚗🤯 #Shorts"
-                hook = "GTA 6 PHYSICS ARE UNREAL 🚗"
-                caption = "The car deformation, water physics, and AI reactions in GTA 6 are blowing everyone's mind.\n\nAre you playing on PC or Console? Tell us below! 👇"
-                default_tags = "#gta6 #gtavi #rockstargames #gaming #gamerlife #nextgen #shorts #reels"
+                clean_h = title_hint.strip() if title_hint else "GTA 6 Leaked Gameplay & Map Details"
+                title = f"{clean_h} 🚗🚨 #Shorts" if not clean_h.endswith("#Shorts") else clean_h
+                hook = "GTA 6 DETAILS LEAKED 🚗"
+                caption = f"{clean_h}! The world scale and physics in GTA 6 look unreal. Are you playing on PC or Console? Tell us below! 👇"
+                default_tags = "#gta6 #gtavi #rockstargames #gta6leak #gaming #gamerlife #nextgen #shorts #reels"
+
+            # 6. General Gaming / Custom Topic
             else:
-                title = f"{title_hint if title_hint else 'This Player Broke The Lobby in Ranked!'} 💀 #Shorts"
-                hook = "NO WAY HE SURVIVED THIS 💀"
-                caption = "Bro was fighting for his life in this final zone 😂\n\nCould you have clutched this? Tag your squad teammate! 👇"
-                default_tags = "#bgmi #pubgmobile #gaming #gamer #clutch #streamer #shorts #reels"
+                clean_h = title_hint.strip() if title_hint else "Viral Gaming Highlight"
+                title = f"{clean_h} 🎮🔥 #Shorts" if not clean_h.endswith("#Shorts") else clean_h
+                hook = "VIRAL GAMING MOMENT 🎮"
+                caption = f"{clean_h}! Drop your thoughts and tag your squad teammate below! 👇"
+                default_tags = "#gaming #gamer #gameplay #streamer #bgmi #shorts #viral #reels #trendingshorts"
 
         elif niche_upper == "SPORTS":
             title = f"{title_hint if title_hint else 'Unbelievable Final Over Thriller!'} 🏏🔥 #Shorts"

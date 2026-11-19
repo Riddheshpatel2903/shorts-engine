@@ -93,11 +93,7 @@ class NeuralTTS:
                 logger.info(f"Edge TTS synthesized {output_wav.name} ({voice_name})")
                 return output_wav
         except Exception as e:
-<<<<<<< HEAD
-            logger.warning(f"Edge TTS synthesis error ({e}). Attempting offline fallback.")
-=======
             logger.warning(f"Edge TTS synthesis error or timeout ({e}). Attempting offline fallback.")
->>>>>>> 9073616 (feat: integrate AutoClip high-precision clipping, real footage engine & Playwright publisher)
 
         # 2. Secondary Fallback: Windows PowerShell Speech Synthesis
         ps_script = f"""

@@ -44,6 +44,7 @@ from core.vector_video import vector_video_engine
 from core.publisher import publisher
 from core.clip_story_engine import clip_story_engine
 from core.autoclip_precision import autoclip_aligner, autoclip_cutter
+from core.chat_analyzer import chat_analyzer
 
 # Page Configuration
 st.set_page_config(
@@ -107,6 +108,25 @@ def render_video_player(video_path: Path, key_prefix: str = "") -> bool:
     except Exception as e:
         st.error(f"Error loading video {video_path.name}: {e}")
         return False
+
+def render_publish_status_banner():
+    """Renders prominent status messages when auto-publishing completes."""
+    msg = st.session_state.get("publish_status_msg")
+    if not msg:
+        return
+    if isinstance(msg, dict):
+        yt = msg.get("youtube")
+        ig = msg.get("instagram")
+        if yt and isinstance(yt, dict):
+            if yt.get("success"):
+                st.success(f"🚀 Auto-Published to YouTube Shorts: [{yt.get('url')}]({yt.get('url')})")
+            elif yt.get("error"):
+                st.info(f"YouTube Upload Note: {yt.get('error')}")
+        if ig and isinstance(ig, dict):
+            if ig.get("success"):
+                st.success(f"🚀 Auto-Published to Instagram Reels: [{ig.get('url')}]({ig.get('url')})")
+            elif ig.get("error"):
+                st.info(f"Instagram Upload Note: {ig.get('error')}")
 
 # Modern Professional SaaS CSS
 st.markdown("""
@@ -269,10 +289,13 @@ with st.sidebar:
         st.divider()
 
         # Auto-publish toggle
-        auto_post_toggle = st.checkbox("Auto-publish to YouTube & Instagram upon render", value=social_status.get("auto_publish", False), key="chk_autopub")
+        auto_post_toggle = st.checkbox("⚡ Auto-publish to YouTube & Instagram upon render", value=social_status.get("auto_publish", False), key="chk_autopub")
         if auto_post_toggle != social_status.get("auto_publish"):
             publisher.update_settings(auto_publish_on_render=auto_post_toggle)
             st.rerun()
+
+        if auto_post_toggle:
+            st.caption("🟢 **Auto-Posting Active**: Videos render and immediately upload to your logged-in channels with targeted captions & hashtags!")
 
         if st.button("🔄 Refresh Login Status", use_container_width=True, key="btn_refresh_status"):
             st.rerun()
@@ -398,6 +421,45 @@ if st.session_state.nav_tab == "Clip Studio":
             else:
                 selected_mom = {}
 
+            # AutoClip: Superchat & Live Chat Spike Highlights
+            sc_list = chat_analyzer.detect_transcript_superchats(data.get("transcript", {}))
+            chat_candidates = list(Path(data["source_path"]).parent.glob(f"{Path(data['source_path']).stem}*.live_chat.json"))
+            if chat_candidates:
+                parsed_sc = [m for m in chat_analyzer.parse_chat_file(chat_candidates[0]) if m.get("is_superchat")]
+                if parsed_sc:
+                    sc_list = parsed_sc + sc_list
+
+            burn_sc_card = False
+            active_sc_item = None
+            if sc_list:
+                with st.expander(f"💬 AutoClip Superchats Detected ({len(sc_list)} moments)", expanded=True):
+                    st.caption("Viewer donations & Superchat controversies extracted from live stream:")
+                    for sc_idx, sc_item in enumerate(sc_list[:5]):
+                        amt = sc_item.get("amount_text") or f"${sc_item.get('amount', 20)}"
+                        donor = sc_item.get("donor") or sc_item.get("author", "Viewer")
+                        q = sc_item.get("question") or sc_item.get("message", "Superchat")
+                        t_m = format_time(sc_item.get("start", sc_item.get("time", 0.0)))
+
+                        c_sc_txt, c_sc_btn = st.columns([3, 1])
+                        with c_sc_txt:
+                            st.markdown(f"**💬 {amt} from {donor}:** *\"{q[:50]}\"* (`{t_m}`)")
+                        with c_sc_btn:
+                            if st.button("🎯 Jump", key=f"btn_jump_sc_{sc_idx}"):
+                                sc_start = max(0.0, float(sc_item.get("start", sc_item.get("time", 0.0))))
+                                st.session_state.selected_clip_window["start"] = sc_start
+                                st.session_state.selected_clip_window["end"] = min(float(total_dur), sc_start + 35.0)
+                                st.session_state.active_superchat_card = {
+                                    "donor": donor,
+                                    "amount_text": amt,
+                                    "question": q,
+                                    "duration": 6.0
+                                }
+                                st.toast(f"Jumped to Superchat from {donor}!", icon="💬")
+                                st.rerun()
+
+                    burn_sc_card = st.checkbox("💬 Overlay Superchat Card at top of Short", value=True, key="chk_burn_sc_card")
+                    active_sc_item = getattr(st.session_state, "active_superchat_card", sc_list[0])
+
             # Precise Manual Trim Handles
             st.markdown("##### Trim Handles & Boundary Adjustment")
             cur_s = st.session_state.selected_clip_window["start"]
@@ -447,7 +509,8 @@ if st.session_state.nav_tab == "Clip Studio":
                         "start": start_val,
                         "end": end_val,
                         "duration": clip_len,
-                        "hook_text": hook_banner_text
+                        "hook_text": hook_banner_text,
+                        "superchat_card": active_sc_item if burn_sc_card else None
                     }
 
                     transcript_data = data["transcript"]
@@ -509,6 +572,7 @@ if st.session_state.nav_tab == "Clip Studio":
         active_clip_file = clip_renders[0]
         active_clip_meta = ai_brain.generate_viral_metadata(clip_text=active_clip_file.stem, niche="GAMING")
 
+    render_publish_status_banner()
     if active_clip_file and active_clip_file.exists():
         st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
         st.markdown("<div class='pro-card-header'><span>Rendered Short Deliverable & Player</span><span class='pro-badge badge-green'>Ready to Publish</span></div>", unsafe_allow_html=True)
@@ -715,7 +779,8 @@ elif st.session_state.nav_tab == "Daily Feeds & Scripts":
                         )
                         st.session_state.feed_video_result = feed_vid_res
                         if publisher.creds.get("auto_publish_on_render"):
-                            publisher.auto_publish_if_enabled(feed_vid_res["output_path"], feed_vid_res["social_copy"])
+                            pub_res = publisher.auto_publish_if_enabled(feed_vid_res["output_path"], feed_vid_res["social_copy"])
+                            st.session_state.publish_status_msg = pub_res
                         st.rerun()
 
             with c_act1:
@@ -743,6 +808,7 @@ elif st.session_state.nav_tab == "Daily Feeds & Scripts":
         cur_feed_vid = feed_renders[0]
         cur_feed_meta = ai_brain.generate_viral_metadata(clip_text=cur_feed_vid.stem, niche="NEWS")
 
+    render_publish_status_banner()
     if cur_feed_vid and cur_feed_vid.exists():
         st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
         st.markdown("<div class='pro-card-header'><span>Rendered Feed Video Deliverable</span><span class='pro-badge badge-green'>Ready to Publish</span></div>", unsafe_allow_html=True)
@@ -997,6 +1063,7 @@ elif st.session_state.nav_tab in ["Topic to Video Studio", "Script to Vector Vid
         cur_vec_file = vec_renders[0]
         cur_vec_meta = ai_brain.generate_viral_metadata(clip_text=cur_vec_file.stem, niche="EDUCATION")
 
+    render_publish_status_banner()
     if cur_vec_file and cur_vec_file.exists():
         st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
         st.markdown("<div class='pro-card-header'><span>Rendered Real-Footage Short</span><span class='pro-badge badge-green'>1080x1920 AutoClip</span></div>", unsafe_allow_html=True)

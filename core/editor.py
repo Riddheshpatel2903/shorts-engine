@@ -9,7 +9,7 @@ import os
 import subprocess
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 
 from config import CANVAS_WIDTH, CANVAS_HEIGHT, TARGET_FPS
 
@@ -63,8 +63,9 @@ class VideoEditor:
         self,
         layout_info: Dict[str, Any],
         subtitle_path: Optional[Path] = None,
-        template: str = "AUTO"
-    ) -> str:
+        template: str = "AUTO",
+        superchat_card: Optional[Dict[str, Any]] = None
+    ) -> Tuple[str, str, str]:
         """
         Constructs the FFmpeg -filter_complex string for 1080x1920 9:16 vertical composition.
         Supports templates:
@@ -211,6 +212,18 @@ class VideoEditor:
             )
             filters.extend([bg_filter, fg_filter, overlay_filter])
             current_v = "[framed]"
+
+        # Add Superchat Donation Overlay Card if provided
+        if superchat_card:
+            from core.chat_analyzer import chat_analyzer
+            sc_filter = chat_analyzer.generate_superchat_overlay_filter(
+                donor_name=superchat_card.get("donor", "Viewer"),
+                amount_text=superchat_card.get("amount_text", "$20"),
+                question_text=superchat_card.get("question", "VIRAL MOMENT"),
+                duration=float(superchat_card.get("duration", 6.0))
+            )
+            filters.append(f"{current_v}{sc_filter}[sc_v]")
+            current_v = "[sc_v]"
 
         # Add Subtitles if provided
         if subtitle_path and os.path.exists(subtitle_path):

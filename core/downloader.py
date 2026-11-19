@@ -182,3 +182,34 @@ class VideoDownloader:
                 "thumbnail": info.get("thumbnail", ""),
                 "webpage_url": info.get("webpage_url", url),
             }
+
+    def download_live_chat(self, url: str, output_path: Path) -> Optional[Path]:
+        """
+        Attempts to fetch live chat replay (.live_chat.json) for livestreams and VODs.
+        """
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        outtmpl = str(output_path.with_suffix(".%(ext)s"))
+
+        ydl_opts = self._configure_opts({
+            "skip_download": True,
+            "write_sub": True,
+            "sub_langs": ["live_chat"],
+            "outtmpl": outtmpl,
+            "quiet": True,
+            "no_warnings": True,
+            "socket_timeout": 6
+        })
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+
+            # Look for live_chat.json file
+            candidates = list(output_path.parent.glob(f"{output_path.stem}*.live_chat.json"))
+            if candidates and candidates[0].stat().st_size > 100:
+                return candidates[0]
+        except Exception as e:
+            logger.debug(f"Live chat replay not available or failed to download: {e}")
+
+        return None

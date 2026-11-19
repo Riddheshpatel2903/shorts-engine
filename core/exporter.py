@@ -125,7 +125,8 @@ class VideoExporter:
         filter_complex, v_map, a_map = self.editor.build_filter_graph(
             layout_info,
             subtitle_path=subtitle_path,
-            template=template
+            template=template,
+            superchat_card=clip_info.get("superchat_card")
         )
 
         # Base FFmpeg command
