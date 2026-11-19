@@ -51,7 +51,6 @@ class NeuralTTS:
         clean_text = re.sub(r"[\*\#\_]", "", text).strip()
         if not clean_text:
             clean_text = "Check out this insane viral moment."
-
         voice_name = VOICE_PROFILES.get(voice_profile, voice_profile)
         if not voice_name.endswith("Neural"):
             voice_name = self.default_voice
@@ -62,21 +61,20 @@ class NeuralTTS:
         # 1. Primary: Edge Neural TTS (Natural, lifelike human voice)
         try:
             import edge_tts
+            import concurrent.futures
 
-            async def _run_edge():
-                communicate = edge_tts.Communicate(clean_text, voice_name, rate=rate_pct)
-                await communicate.save(str(temp_mp3))
-
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    import concurrent.futures
-                    with concurrent.futures.ThreadPoolExecutor() as pool:
-                        pool.submit(asyncio.run, _run_edge()).result()
-                else:
-                    asyncio.run(_run_edge())
-            except Exception:
+            def _call_edge():
+                async def _run_edge():
+                    communicate = edge_tts.Communicate(clean_text, voice_name, rate=rate_pct)
+                    await communicate.save(str(temp_mp3))
                 asyncio.run(_run_edge())
+
+            pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            try:
+                fut = pool.submit(_call_edge)
+                fut.result(timeout=3.0)
+            finally:
+                pool.shutdown(wait=False, cancel_futures=True)
 
             if temp_mp3.exists() and temp_mp3.stat().st_size > 1000:
                 # Convert MP3 to 24000Hz WAV with FFmpeg
@@ -95,7 +93,11 @@ class NeuralTTS:
                 logger.info(f"Edge TTS synthesized {output_wav.name} ({voice_name})")
                 return output_wav
         except Exception as e:
+<<<<<<< HEAD
             logger.warning(f"Edge TTS synthesis error ({e}). Attempting offline fallback.")
+=======
+            logger.warning(f"Edge TTS synthesis error or timeout ({e}). Attempting offline fallback.")
+>>>>>>> 9073616 (feat: integrate AutoClip high-precision clipping, real footage engine & Playwright publisher)
 
         # 2. Secondary Fallback: Windows PowerShell Speech Synthesis
         ps_script = f"""

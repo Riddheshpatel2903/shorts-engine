@@ -21,6 +21,7 @@ from config import (
     LOGS_DIR
 )
 from core.editor import VideoEditor
+from core.autoclip_precision import autoclip_cutter
 
 logger = logging.getLogger("ViralShortsEngine.Exporter")
 
@@ -128,12 +129,13 @@ class VideoExporter:
         )
 
         # Base FFmpeg command
-        # Accurate cutting using -ss before -i and -t
+        # AutoClip High-Precision cutting with frame-accurate seek & PTS zeroing
         cmd = [
             "ffmpeg", "-y",
             "-ss", str(start_t),
-            "-t", str(duration),
             "-i", str(source_path),
+            "-t", str(duration),
+            "-avoid_negative_ts", "make_zero",
             "-filter_complex", filter_complex,
             "-map", v_map,
             "-map", a_map,
@@ -169,6 +171,20 @@ class VideoExporter:
         if res.returncode != 0:
             logger.error(f"FFmpeg rendering failed: {res.stderr[-1000:]}")
             raise RuntimeError(f"FFmpeg rendering failed: {res.stderr[-400:]}")
+
+        # AutoClip Cover Thumbnail Snapshot Generation
+        try:
+            cover_path = out_path.with_name(f"cover_{out_path.stem}.jpg")
+            peak_t = start_t + min(3.0, duration / 2.0)
+            autoclip_cutter.extract_cover_thumbnail(
+                source_video=Path(source_path),
+                timestamp=peak_t,
+                output_cover=cover_path,
+                hook_headline=clip_info.get("hook_text")
+            )
+            logger.info(f"AutoClip generated high-res cover thumbnail: {cover_path.name}")
+        except Exception as e:
+            logger.debug(f"Cover snapshot skipped: {e}")
 
         # Post-render validation
         validation = self.verify_export(out_path, expected_duration=duration)

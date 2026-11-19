@@ -42,6 +42,8 @@ from core.feed_manager import feed_manager
 from core.tts_engine import tts_engine
 from core.vector_video import vector_video_engine
 from core.publisher import publisher
+from core.clip_story_engine import clip_story_engine
+from core.autoclip_precision import autoclip_aligner, autoclip_cutter
 
 # Page Configuration
 st.set_page_config(
@@ -215,7 +217,7 @@ with st.sidebar:
         options=[
             "Clip Studio",
             "Daily Feeds & Scripts",
-            "Script to Vector Video",
+            "Topic to Video Studio",
             "Exports & Video Library"
         ],
         label_visibility="collapsed"
@@ -350,7 +352,7 @@ if st.session_state.nav_tab == "Clip Studio":
                 detector = MomentDetector()
                 segments = detector.analyze_moments(source_input_path, transcript)
                 selector = ClipSelector(min_duration=20.0, max_duration=55.0, genre_focus="all")
-                moments = selector.select_clips(segments, num_shorts=3, genre_focus="all")
+                moments = selector.select_clips(segments, num_shorts=3, genre_focus="all", transcript=transcript)
 
                 st.session_state.analysis_result = {
                     "source_path": source_input_path,
@@ -408,7 +410,16 @@ if st.session_state.nav_tab == "Clip Studio":
                 end_val = st.number_input("End Time (seconds):", min_value=float(start_val) + 5.0, max_value=float(total_dur), value=max(float(start_val) + 5.0, float(cur_e)), step=1.0)
 
             clip_len = end_val - start_val
-            st.markdown(f"**Active Clip Duration:** `{clip_len:.1f}s` (Recommended: 25s - 50s for Shorts)")
+            c_info, c_snap = st.columns([1.4, 1])
+            with c_info:
+                st.markdown(f"**Active Clip Duration:** `{clip_len:.1f}s` (Recommended: 25s - 50s for Shorts)")
+            with c_snap:
+                if st.button("⚡ AutoClip Precision Snap", help="Snaps cut timestamps to exact speech pause and complete sentence boundaries (zero mid-word cutoffs)"):
+                    snapped = autoclip_aligner.snap_boundaries(data["transcript"], start_val, end_val)
+                    st.session_state.selected_clip_window["start"] = snapped["start"]
+                    st.session_state.selected_clip_window["end"] = snapped["end"]
+                    st.toast(f"⚡ Snapped to speech boundary: {snapped['start']}s -> {snapped['end']}s", icon="✅")
+                    st.rerun()
 
             # Custom Hook Title & Subtitle Styling
             hook_banner_text = st.text_input("Top Motion Hook Banner Text:", value=selected_mom.get("hook_text", "VIRAL MOMENT") if moments else "VIRAL MOMENT")
@@ -646,17 +657,61 @@ elif st.session_state.nav_tab == "Daily Feeds & Scripts":
                 height=160
             )
 
+            # AutoClip: Search and match real footage & live stream clips for this topic
+            if "feed_discovered_clips" not in st.session_state or st.session_state.get("last_feed_clip_topic") != current_topic:
+                st.session_state.feed_discovered_clips = clip_story_engine.search_relevant_clips(current_topic, limit=4)
+                st.session_state.last_feed_clip_topic = current_topic
+
+            disc_clips = st.session_state.get("feed_discovered_clips", [])
+            st.markdown("##### 🎯 AutoClip Real Footage & Stream Clip Discovery")
+            clip_choices = ["⚡ (Auto-Match) Best Stream Highlight / Gameplay Snippet"]
+            for c in disc_clips:
+                clip_choices.append(f"📹 [{c.get('uploader', 'Creator')}] {c.get('title', 'Video Clip')[:60]}")
+            clip_choices.append("🔗 Enter Custom YouTube / Twitch Video URL")
+
+            chosen_clip_opt = st.radio("Select Real Video Footage Source for this Short:", options=clip_choices, key="feed_clip_choice_radio")
+            custom_clip_url = ""
+            if chosen_clip_opt == "🔗 Enter Custom YouTube / Twitch Video URL":
+                custom_clip_url = st.text_input("Paste YouTube / Live Stream Video URL:", placeholder="https://www.youtube.com/watch?v=...", key="feed_custom_clip_url")
+
+            selected_clip_src = None
+            if custom_clip_url and custom_clip_url.strip():
+                selected_clip_src = custom_clip_url.strip()
+            elif chosen_clip_opt.startswith("📹") and disc_clips:
+                clip_idx = clip_choices.index(chosen_clip_opt) - 1
+                if 0 <= clip_idx < len(disc_clips):
+                    selected_clip_src = disc_clips[clip_idx].get("url")
+
+            col_f_voice, col_f_sub = st.columns(2)
+            with col_f_voice:
+                v_opts = tts_engine.get_available_voices()
+                feed_voice = st.selectbox(
+                    "Studio Neural Voice:",
+                    options=[v["id"] for v in v_opts],
+                    format_func=lambda vid: next((v["name"] for v in v_opts if v["id"] == vid), vid),
+                    key="feed_voice_select"
+                )
+            with col_f_sub:
+                feed_sub_preset = st.selectbox(
+                    "Subtitle Kinetic Style:",
+                    options=list(SUBTITLE_PRESETS.keys()),
+                    format_func=lambda k: SUBTITLE_PRESETS[k]["name"],
+                    key="feed_sub_style_select"
+                )
+
             # Direct 1-Click Video Render Button + Forwarding Options
             st.write("")
             c_rend, c_act1, c_act2 = st.columns([1.4, 1, 1])
             with c_rend:
-                if st.button("Render Short Video Now (1080x1920)", type="primary", use_container_width=True):
-                    with st.spinner("Synthesizing OmniVoice narration & rendering 1080x1920 video..."):
-                        feed_vid_res = vector_video_engine.build_vector_video(
+                if st.button("🎬 Render Real-Footage Short (1080x1920)", type="primary", use_container_width=True):
+                    with st.spinner("Synthesizing Studio Neural voiceover & fetching real proof footage..."):
+                        feed_vid_res = clip_story_engine.build_clip_story_video(
                             script_text=final_script_text,
-                            voice_id="en_us_male_deep",
+                            topic=current_topic,
+                            clip_source=selected_clip_src,
+                            voice_id=feed_voice,
                             custom_hook_title=s_data.get("hook_banner", "THE REAL STORY"),
-                            subtitle_preset="alex_hormozi"
+                            subtitle_preset=feed_sub_preset
                         )
                         st.session_state.feed_video_result = feed_vid_res
                         if publisher.creds.get("auto_publish_on_render"):
@@ -664,9 +719,10 @@ elif st.session_state.nav_tab == "Daily Feeds & Scripts":
                         st.rerun()
 
             with c_act1:
-                if st.button("Send to Vector Video Studio", use_container_width=True):
+                if st.button("Send to Topic Video Studio", use_container_width=True):
                     st.session_state.vector_script_buffer = final_script_text
-                    st.session_state.nav_tab = "Script to Vector Video"
+                    st.session_state.vector_topic_input = current_topic
+                    st.session_state.nav_tab = "Topic to Video Studio"
                     st.rerun()
             with c_act2:
                 if st.button("Search & Cut Stream Highlights", use_container_width=True):
@@ -676,7 +732,7 @@ elif st.session_state.nav_tab == "Daily Feeds & Scripts":
         st.markdown("</div>", unsafe_allow_html=True)
 
     # Deliverable display for Tab 2 (Feed Generated Video)
-    feed_renders = get_rendered_videos("vector_short_*.mp4") or get_rendered_videos("*.mp4")
+    feed_renders = get_rendered_videos("story_*.mp4") or get_rendered_videos("vector_short_*.mp4") or get_rendered_videos("*.mp4")
     cur_feed_vid = None
     cur_feed_meta = None
 
@@ -739,11 +795,11 @@ elif st.session_state.nav_tab == "Daily Feeds & Scripts":
 
 
 # -------------------------------------------------------
-# TAB 3: TOPIC TO VIDEO ENGINE (AUTO-SCRIPT + REDO + RENDER)
+# TAB 3: TOPIC TO REAL-CLIP VIDEO STUDIO (AUTOCLIP + REDO + RENDER)
 # -------------------------------------------------------
-elif st.session_state.nav_tab == "Script to Vector Video":
-    st.markdown("## Topic-to-Video Studio")
-    st.caption("Enter any topic or pick from live trending feeds. The AI auto-generates a viral script with 1-click redo control, then renders a complete 1080x1920 Short.")
+elif st.session_state.nav_tab in ["Topic to Video Studio", "Script to Vector Video"]:
+    st.markdown("## Topic to Real-Clip Video Studio")
+    st.caption("AutoClip Engine: Enter any topic or pick from live trending feeds. The AI discovers real stream footage & proof clips, generates high-voltage scripts, and renders an authentic 1080x1920 Short.")
 
     # Check if a custom script was forwarded from Tab 2
     if hasattr(st.session_state, "vector_script_buffer") and st.session_state.vector_script_buffer:
@@ -862,7 +918,32 @@ elif st.session_state.nav_tab == "Script to Vector Video":
             key="v_script_textarea"
         )
 
-        # Step 3: Voiceover & Kinetic Subtitle Settings
+        # Step 3: AutoClip Real Footage & Stream Clip Discovery
+        if "topic_discovered_clips" not in st.session_state or st.session_state.get("last_topic_clip_q") != cur_topic:
+            st.session_state.topic_discovered_clips = clip_story_engine.search_relevant_clips(cur_topic, limit=4)
+            st.session_state.last_topic_clip_q = cur_topic
+
+        t_clips = st.session_state.get("topic_discovered_clips", [])
+        st.markdown("##### 🎯 AutoClip Real Footage & Stream Proof Clips")
+        t_choices = ["⚡ (Auto-Match) Best Stream Highlight / Gameplay Snippet"]
+        for c in t_clips:
+            t_choices.append(f"📹 [{c.get('uploader', 'Creator')}] {c.get('title', 'Video Clip')[:60]}")
+        t_choices.append("🔗 Enter Custom YouTube / Twitch Video URL")
+
+        chosen_t_opt = st.radio("Select Real Video Footage Source for this Short:", options=t_choices, key="topic_clip_choice_radio")
+        custom_t_url = ""
+        if chosen_t_opt == "🔗 Enter Custom YouTube / Twitch Video URL":
+            custom_t_url = st.text_input("Paste YouTube / Live Stream Video URL:", placeholder="https://www.youtube.com/watch?v=...", key="topic_custom_clip_url")
+
+        selected_topic_src = None
+        if custom_t_url and custom_t_url.strip():
+            selected_topic_src = custom_t_url.strip()
+        elif chosen_t_opt.startswith("📹") and t_clips:
+            t_idx = t_choices.index(chosen_t_opt) - 1
+            if 0 <= t_idx < len(t_clips):
+                selected_topic_src = t_clips[t_idx].get("url")
+
+        # Step 4: Voiceover & Kinetic Subtitle Settings
         col_v1, col_v2 = st.columns(2)
         with col_v1:
             voice_options = tts_engine.get_available_voices()
@@ -880,40 +961,32 @@ elif st.session_state.nav_tab == "Script to Vector Video":
                 key="v_subtitle_preset"
             )
 
-        ref_wav_upload = st.file_uploader("Optional: Upload Reference Voice Sample (.wav) for Zero-Shot Cloning:", type=["wav"], key="v_wav_upload")
-        ref_path = None
-        if ref_wav_upload:
-            ref_save = PROCESSING_DIR / f"ref_voice_{ref_wav_upload.name}"
-            with open(ref_save, "wb") as f:
-                f.write(ref_wav_upload.getbuffer())
-            ref_path = str(ref_save)
-            st.caption(f"Loaded voice clone reference: {ref_wav_upload.name}")
-
         st.write("")
-        # Step 4: Generate Video Button
-        if st.button("🎬 Generate Complete 1080x1920 Short Video", type="primary", use_container_width=True, key="btn_gen_vector_video"):
+        # Step 5: Generate Real-Footage Short Button
+        if st.button("🎬 Generate Real-Footage Short Video (1080x1920)", type="primary", use_container_width=True, key="btn_gen_vector_video"):
             if editable_script_text and editable_script_text.strip():
-                with st.spinner("Synthesizing OmniVoice narration, generating vector graphics & compositing 1080x1920 video..."):
-                    vec_res = vector_video_engine.build_vector_video(
+                with st.spinner("Synthesizing Studio Neural voiceover, fetching real proof footage & compositing 1080x1920 video..."):
+                    story_res = clip_story_engine.build_clip_story_video(
                         script_text=editable_script_text.strip(),
+                        topic=cur_topic,
+                        clip_source=selected_topic_src,
                         voice_id=chosen_voice,
-                        reference_audio=ref_path,
                         custom_hook_title=hook_banner_input,
                         subtitle_preset=sub_style_vec
                     )
-                    st.session_state.vector_video_result = vec_res
+                    st.session_state.vector_video_result = story_res
 
                     # Auto-publish if enabled
                     if publisher.creds.get("auto_publish_on_render"):
-                        pub_res = publisher.auto_publish_if_enabled(vec_res["output_path"], vec_res["social_copy"])
+                        pub_res = publisher.auto_publish_if_enabled(story_res["output_path"], story_res["social_copy"])
                         st.session_state.publish_status_msg = pub_res
 
                     st.rerun()
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Deliverable View for Vector Video
-    vec_renders = get_rendered_videos("vector_short_*.mp4") or get_rendered_videos("*.mp4")
+    # Deliverable View for Real Footage Video
+    vec_renders = get_rendered_videos("story_*.mp4") or get_rendered_videos("vector_short_*.mp4") or get_rendered_videos("*.mp4")
     cur_vec_file = None
     cur_vec_meta = None
 
@@ -926,11 +999,11 @@ elif st.session_state.nav_tab == "Script to Vector Video":
 
     if cur_vec_file and cur_vec_file.exists():
         st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
-        st.markdown("<div class='pro-card-header'><span>Rendered Vector Video Short</span><span class='pro-badge badge-green'>1080x1920 @ 60FPS</span></div>", unsafe_allow_html=True)
+        st.markdown("<div class='pro-card-header'><span>Rendered Real-Footage Short</span><span class='pro-badge badge-green'>1080x1920 AutoClip</span></div>", unsafe_allow_html=True)
 
         if len(vec_renders) > 1:
             vec_pick = st.selectbox(
-                "Select Vector Video to Preview:",
+                "Select Short Video to Preview:",
                 options=vec_renders,
                 format_func=lambda p: f"{p.name} ({p.stat().st_size / (1024*1024):.1f} MB)",
                 key="vector_studio_file_selector"
@@ -942,6 +1015,9 @@ elif st.session_state.nav_tab == "Script to Vector Video":
         col_v_play, col_v_dist = st.columns([1, 1.2])
         with col_v_play:
             render_video_player(cur_vec_file, key_prefix="vector_studio")
+            cover_snap = cur_vec_file.with_name(f"cover_{cur_vec_file.stem}.jpg")
+            if cover_snap.exists():
+                st.image(str(cover_snap), caption="AutoClip Generated Cover Snapshot", use_container_width=True)
         with col_v_dist:
             st.markdown("**Viral Title:**")
             st.code(cur_vec_meta.get("title", cur_vec_file.stem), language=None)
@@ -974,7 +1050,7 @@ elif st.session_state.nav_tab == "Script to Vector Video":
 
         st.markdown("</div>", unsafe_allow_html=True)
     else:
-        st.info("No vector videos rendered yet. Enter a script above and click 'Generate Complete Vector Video Short'.")
+        st.info("No videos rendered yet. Enter a topic above and click 'Generate Real-Footage Short Video (1080x1920)'.")
 
 
 # -------------------------------------------------------
@@ -988,7 +1064,7 @@ elif st.session_state.nav_tab == "Exports & Video Library":
     
     if not all_vids:
         st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
-        st.info("No rendered videos found in workspace/output. Generate a clip in 'Clip Studio', a story video in 'Daily Feeds', or a motion video in 'Script to Vector Video' to populate this library.")
+        st.info("No rendered videos found in workspace/output. Generate a clip in 'Clip Studio', a story video in 'Daily Feeds', or a real-footage video in 'Topic to Video Studio' to populate this library.")
         st.markdown("</div>", unsafe_allow_html=True)
     else:
         total_size_mb = sum(p.stat().st_size for p in all_vids) / (1024 * 1024)

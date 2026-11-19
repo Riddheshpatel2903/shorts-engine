@@ -12,6 +12,7 @@ Ranks and selects candidate clips (20-60s) targeting:
 
 import logging
 from typing import Dict, Any, List, Optional
+from core.autoclip_precision import autoclip_aligner
 
 logger = logging.getLogger("ViralShortsEngine.ClipSelector")
 
@@ -223,7 +224,8 @@ class ClipSelector:
         analyzed_segments: List[Dict[str, Any]],
         num_shorts: int = 3,
         overlap_threshold: float = 0.35,
-        genre_focus: Optional[str] = None
+        genre_focus: Optional[str] = None,
+        transcript: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """
         Generates candidate clips across the video and ranks top non-overlapping clips
@@ -327,6 +329,26 @@ class ClipSelector:
                 selected_clips.append(cand)
                 if len(selected_clips) >= num_shorts:
                     break
+
+        # AutoClip Precision Boundary Refinement (Sentence & Word Snapping)
+        if transcript:
+            for sc in selected_clips:
+                try:
+                    snapped = autoclip_aligner.snap_boundaries(
+                        transcript=transcript,
+                        raw_start=sc["start"],
+                        raw_end=sc["end"],
+                        max_duration=self.max_duration,
+                        min_duration=self.min_duration
+                    )
+                    sc["start"] = snapped["start"]
+                    sc["end"] = snapped["end"]
+                    sc["duration"] = snapped["duration"]
+                    sc["clean_boundary"] = snapped["is_sentence_boundary"]
+                    if snapped.get("hook_text"):
+                        sc["hook_text"] = snapped["hook_text"]
+                except Exception as e:
+                    logger.debug(f"AutoClip snap fallback: {e}")
 
         logger.info(f"Selected {len(selected_clips)} viral clips for genre '{self.genre_focus}' (requested {num_shorts}).")
         return selected_clips
