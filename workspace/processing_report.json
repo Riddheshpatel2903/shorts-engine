@@ -1,0 +1,40 @@
+{
+  "source_title": "test_sample",
+  "source_url": "local_file",
+  "language": "cy",
+  "layout_classification": "GAMEPLAY",
+  "hardware_profile": {
+    "gpu_detected": false,
+    "gpu_name": "None",
+    "vram_mb": 0,
+    "nvenc_supported": false,
+    "video_encoder": "libx264",
+    "device": "cpu",
+    "compute_type": "int8",
+    "whisper_model": "small",
+    "threads": 12
+  },
+  "total_shorts_generated": 1,
+  "shorts": [
+    {
+      "filename": "short_001.mp4",
+      "filepath": "C:\\Users\\patel\\OneDrive\\Desktop\\Personal Works\\refractotherm_new_php\\ViralShortsEngine\\workspace\\output\\short_001.mp4",
+      "start": 0.0,
+      "end": 24.0,
+      "duration": 24.0,
+      "viral_score": 75.0,
+      "hook_text": "High action moment",
+      "validation": {
+        "valid": true,
+        "video_duration": 24.0,
+        "audio_duration": 24.0,
+        "duration_diff": 0.0,
+        "width": 1080,
+        "height": 1920,
+        "size_mb": 1.29,
+        "video_codec": "h264",
+        "audio_codec": "aac"
+      }
+    }
+  ]
+}

@@ -88,28 +88,25 @@ GEOPOLITICS_CONFLICT_PATTERNS = [
     r"\b(war|military|invade|missile|tensions|clash|attack|strike|weapon|defense|nato|superpower)\b",
     r"\b(sanctions|embargo|economy|trade war|collapse|dollar|tariffs|oil|semiconductors|chokepoint)\b",
     r"\b(united states|china|russia|taiwan|ukraine|iran|middle east|borders|territory|sovereignty)\b",
-    r"\b(the real reason behind|geopolitical strategy|why they did it|secret alliance|crisis|escalation)\b",
-    r"\b(jaishankar|foreign minister|western media|savage reply|kashmir|pakistan|china border|galwan|ladakh)\b"
+    r"\b(the real reason behind|geopolitical strategy|why they did it|secret alliance|crisis|escalation)\b"
 ]
 
-# 8. SUPERCHAT, VIEWER DONATION & CONTROVERSY CLAPBACKS (ENGLISH & HINDI / HINGLISH)
+# 8. SUPERCHAT, VIEWER DONATION & CONTROVERSY CLAPBACKS
 SUPERCHAT_CONTROVERSY_PATTERNS = [
     r"\b(someone in chat (said|is saying)|chat is asking|this (superchat|donation) says|\$\d+ from|donation from|reading chat|why did you do|did you really|answering the allegation|addressing the drama)\b",
-    r"\b(first of all|let me set the record straight|that is complete bullshit|you don'?t know what happened|let me address this|stop spreading lies|i have the receipts|here is the proof|i never said that|listen to me chat)\b",
-    r"\b(bhai superchat|superchat me pucha|chat me log bol rahe|bhai kya bol raha hai|pehle meri baat sun|sab jhoot bol rahe|aaja 1v1|scout ne bola|jonathan ne bola|godlike|team soul|mortal bhai|bgis|bmps|roster controversy)\b"
+    r"\b(first of all|let me set the record straight|that is complete bullshit|you don'?t know what happened|let me address this|stop spreading lies|i have the receipts|here is the proof|i never said that|listen to me chat)\b"
 ]
 
 # 9. STREAMER WATCHING & REACTING TO OTHER CREATOR DRAMA
 DRAMA_REACTION_PATTERNS = [
     r"\b(pause (the video|it|it right there)|hold on a second|wait wait wait|did he really just say that|look at what he did|bro is actually lying|he cooked himself|reacting to|drama breakdown|i cannot believe he posted this)\b",
-    r"\b(did you hear what he said|unbelievable drama|he responded to me|why is he talking about me|look at this clip|reaction video|bhai dekho ye kya bol raha)\b"
+    r"\b(did you hear what he said|unbelievable drama|he responded to me|why is he talking about me|look at this clip)\b"
 ]
 
-# 10. GAMEPLAY ACTION: MULTI-KILLS, FLICKS & UNEXPECTED CLUTCHES (BGMI / PUBG)
+# 10. GAMEPLAY ACTION: MULTI-KILLS, FLICKS & UNEXPECTED CLUTCHES
 GAMEPLAY_ACTION_CLUTCH_PATTERNS = [
     r"\b(one down|two down|three down|another one|triple kill|quad kill|ace|1v\d clutch|he'?s one shot|where did he come from|insane flick|how did i hit that|clutch or kick|clean headshot|unexpected kill|sniped him|wiped the whole team)\b",
-    r"\b(clutching this|no way i survived|how am i alive|spray transfer|got him through the smoke|flawless round)\b",
-    r"\b(lobby khali|pura squad khatam|ek down do down|m416 glacier|aaja beta|clutch god|headshot mar diya|smoke me mara|spray dekho|bgmi clutch)\b"
+    r"\b(clutching this|no way i survived|how am i alive|spray transfer|got him through the smoke|flawless round)\b"
 ]
 
 # 11. GTA 6 & NEW GAME LAUNCH REACTIONS & PHYSICS
@@ -118,11 +115,10 @@ GTA6_NEW_GAME_PATTERNS = [
     r"\b(next gen physics|unreal engine|insane graphics|jaw dropping|best game ever made|worth the wait)\b"
 ]
 
-# 12. GEOPOLITICAL REFORMS, NEW LAWS & LEGISLATION (INDIA & GLOBAL)
+# 12. GEOPOLITICAL REFORMS, NEW LAWS & LEGISLATION
 GEOPOLITICS_POLICY_PATTERNS = [
     r"\b(new law|signed an executive order|effective immediately|the parliament passed|new regulation|historic legislation|announced a new policy|prime minister announced|president declared|constitutional reform|crackdown on|major reform|new rule in the country)\b",
-    r"\b(press conference|answering the press|heated exchange|called out by the journalist|refused to answer|defended the policy|bold move by the government)\b",
-    r"\b(supreme court of india|naya kanoon|bharatiya nyaya sanhita|sansad|parliament of india|modi speech|landmark ruling)\b"
+    r"\b(press conference|answering the press|heated exchange|called out by the journalist|refused to answer|defended the policy|bold move by the government)\b"
 ]
 
 # 13. GENERAL VIRAL HOOKS & QUESTIONS
