@@ -236,17 +236,26 @@ with st.sidebar:
         with c_yt_mode1:
             yt_cid = st.text_input("Google Client ID:", value=publisher.creds["youtube"].get("client_id", ""), key="yt_cid_in")
             yt_sec = st.text_input("Google Client Secret:", value=publisher.creds["youtube"].get("client_secret", ""), type="password", key="yt_sec_in")
-            yt_redir = st.text_input("Authorized Redirect URI:", value="https://shorts-engine.streamlit.app/", help="Must match the Authorized redirect URI in Google Cloud Console", key="yt_redir_in")
+            if "yt_target_uri" not in st.session_state:
+                st.session_state.yt_target_uri = "https://shorts-engine.streamlit.app/"
+
+            def set_cloud_uri():
+                st.session_state.yt_target_uri = "https://shorts-engine.streamlit.app/"
+
+            def set_local_uri():
+                st.session_state.yt_target_uri = "http://localhost:8501/"
 
             col_preset1, col_preset2 = st.columns(2)
             with col_preset1:
-                if st.button("🌐 Use Streamlit Cloud URI", key="btn_preset_cloud", use_container_width=True):
-                    st.session_state["yt_redir_in"] = "https://shorts-engine.streamlit.app/"
-                    st.rerun()
+                st.button("🌐 Use Streamlit Cloud URI", on_click=set_cloud_uri, key="btn_preset_cloud", use_container_width=True)
             with col_preset2:
-                if st.button("💻 Use Localhost URI", key="btn_preset_local", use_container_width=True):
-                    st.session_state["yt_redir_in"] = "http://localhost:8501/"
-                    st.rerun()
+                st.button("💻 Use Localhost URI", on_click=set_local_uri, key="btn_preset_local", use_container_width=True)
+
+            yt_redir = st.text_input(
+                "Authorized Redirect URI:",
+                value=st.session_state.yt_target_uri,
+                help="Must match the Authorized redirect URI in Google Cloud Console"
+            )
 
             # Check if user was redirected back from Google with code in URL
             url_code = st.query_params.get("code", "")
