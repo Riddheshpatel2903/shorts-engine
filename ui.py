@@ -369,6 +369,32 @@ with st.sidebar:
             publisher.update_credentials(auto_publish=auto_post_toggle)
             st.rerun()
 
+        st.divider()
+        st.markdown("##### 💾 Sync Credentials between Cloud & PC")
+        c_sync1, c_sync2 = st.columns(2)
+        with c_sync1:
+            creds_data = json.dumps(publisher.creds, indent=2)
+            st.download_button(
+                label="📥 Export Config",
+                data=creds_data,
+                file_name="social_credentials.json",
+                mime="application/json",
+                use_container_width=True,
+                help="Download credentials to transfer between Streamlit Cloud and local PC"
+            )
+        with c_sync2:
+            uploaded_cred = st.file_uploader("Upload Config:", type=["json"], label_visibility="collapsed", key="cred_uploader")
+            if uploaded_cred is not None:
+                try:
+                    uploaded_json = json.load(uploaded_cred)
+                    if isinstance(uploaded_json, dict) and ("youtube" in uploaded_json or "instagram" in uploaded_json):
+                        publisher.creds = uploaded_json
+                        publisher._save_credentials()
+                        st.success("Credentials synced successfully!")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Invalid config: {e}")
+
     # Disk Storage Manager
     with st.expander("Disk Storage & Cleanup", expanded=False):
         reclaim_gb = storage_info["downloads_size_gb"]
