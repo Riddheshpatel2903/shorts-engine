@@ -20,6 +20,7 @@ class FaceDetector:
     def __init__(self):
         self.model_path = ASSETS_DIR / "face_detection_yunet_2023mar.onnx"
         self.detector = None
+        self._framing_cache: Dict[Tuple[str, float, float], Dict[str, Any]] = {}
 
         if self.model_path.exists():
             try:
@@ -206,16 +207,22 @@ class FaceDetector:
         3. The optimal horizontal center (cx) to frame them in a Full Vertical Strip (9:16).
         4. Recommends the best vertical layout for this specific clip.
         """
+        cache_key = (str(video_path), round(float(start_time), 1), round(float(duration), 1))
+        if cache_key in self._framing_cache:
+            return self._framing_cache[cache_key]
+
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
             logger.warning(f"Cannot open video for clip framing analysis: {video_path}")
-            return {
+            res = {
                 "person_in_frame": False,
                 "person_looking_in_frame": False,
                 "tracked_person_cx": 960,
                 "recommended_layout": "CINEMATIC_BLUR",
                 "reason": "Source video cannot be opened. Using default cinematic blur."
             }
+            self._framing_cache[cache_key] = res
+            return res
 
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 1920
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 1080
@@ -223,7 +230,7 @@ class FaceDetector:
         # Handle native vertical video (already 9:16)
         if height >= width:
             cap.release()
-            return {
+            res = {
                 "person_in_frame": False,
                 "person_looking_in_frame": False,
                 "source_is_vertical": True,
@@ -234,6 +241,8 @@ class FaceDetector:
                 "recommended_layout": "FULL_VERTICAL_STRIP",
                 "reason": "Source video is already vertical (9:16). Full Vertical Strip fits natively."
             }
+            self._framing_cache[cache_key] = res
+            return res
 
         # Sample frames within the clip range
         step_s = max(0.2, duration / max(1, max_samples))
@@ -257,7 +266,7 @@ class FaceDetector:
         crop_h = height
 
         if total_sampled == 0:
-            return {
+            res = {
                 "person_in_frame": False,
                 "person_looking_in_frame": False,
                 "tracked_person_cx": width // 2,
@@ -267,16 +276,18 @@ class FaceDetector:
                 "recommended_layout": "CINEMATIC_BLUR",
                 "reason": "No frames could be sampled in clip window."
             }
+            self._framing_cache[cache_key] = res
+            return res
 
         frames_with_faces = [fr for fr in frame_records if fr["faces"]]
         face_ratio = len(frames_with_faces) / max(1, total_sampled)
-        has_person = face_ratio >= 0.20
+        has_person = (len(frames_with_faces) >= 2) or (face_ratio >= 0.15)
 
         if not has_person:
             crop_x = int((width - crop_w) / 2)
             crop_x = max(0, min(width - crop_w, crop_x))
             crop_x = crop_x - (crop_x % 2)
-            return {
+            res = {
                 "person_in_frame": False,
                 "person_looking_in_frame": False,
                 "face_ratio": round(face_ratio, 2),
@@ -288,6 +299,8 @@ class FaceDetector:
                 "recommended_layout": "CINEMATIC_BLUR",
                 "reason": "No person in frame (pure gameplay/action). Cinematic blurred backdrop preserves widescreen HUD & action, or use Full Vertical Strip for centered action."
             }
+            self._framing_cache[cache_key] = res
+            return res
 
         # Cluster all detected faces into distinct person tracks across the clip
         clusters = []
@@ -347,6 +360,39 @@ class FaceDetector:
         crop_x = max(0, min(width - crop_w, crop_x))
         crop_x = crop_x - (crop_x % 2)
 
+        # Dynamic multi-speaker tracking: check if two speakers talk in turns
+        crop_x_expr = str(crop_x)
+        dynamic_cut_info = None
+
+        if len(speaker_candidates) >= 2 and not is_corner_facecam:
+            spk1 = speaker_candidates[0]
+            spk2 = speaker_candidates[1]
+            if abs(spk1["median_cx"] - spk2["median_cx"]) > (width * 0.22):
+                spk1_times = []
+                spk2_times = []
+                for fr in frames_with_faces:
+                    t_rel = max(0.0, fr["t"] - start_time)
+                    for face in fr["faces"]:
+                        if abs(face["cx"] - spk1["median_cx"]) < (width * 0.15):
+                            spk1_times.append(t_rel)
+                        elif abs(face["cx"] - spk2["median_cx"]) < (width * 0.15):
+                            spk2_times.append(t_rel)
+
+                if spk1_times and spk2_times:
+                    med1 = float(np.median(spk1_times))
+                    med2 = float(np.median(spk2_times))
+                    if abs(med1 - med2) > (duration * 0.20):
+                        t_cut = round((med1 + med2) / 2.0, 1)
+                        crop_x1 = max(0, min(width - crop_w, int(spk1["median_cx"] - crop_w / 2)))
+                        crop_x2 = max(0, min(width - crop_w, int(spk2["median_cx"] - crop_w / 2)))
+                        crop_x1 = crop_x1 - (crop_x1 % 2)
+                        crop_x2 = crop_x2 - (crop_x2 % 2)
+                        if med1 < med2:
+                            crop_x_expr = f"if(lt(t\\,{t_cut})\\,{crop_x1}\\,{crop_x2})"
+                        else:
+                            crop_x_expr = f"if(lt(t\\,{t_cut})\\,{crop_x2}\\,{crop_x1})"
+                        dynamic_cut_info = f"Auto Speaker Switch at {t_cut}s: Speaker 1 (X={int(spk1['median_cx'])}px) ➡️ Speaker 2 (X={int(spk2['median_cx'])}px)"
+
         facecam_box = None
         if is_corner_facecam:
             recommended = "STREAMER_SPLIT"
@@ -372,9 +418,12 @@ class FaceDetector:
                 "width": box_w,
                 "height": box_h
             }
+        elif dynamic_cut_info:
+            recommended = "FULL_VERTICAL_STRIP"
+            reason = dynamic_cut_info
         elif person_looking:
             recommended = "FULL_VERTICAL_STRIP"
-            reason = f"Speaking person detected at X={int(active_speaker_cx)}px (Active Lip Motion). Centered at 540px in 9:16 Short."
+            reason = f"Speaking person detected at X={int(active_speaker_cx)}px (Lip Motion Tracking Active). Centered at 540px in 9:16 Short."
         else:
             recommended = "FULL_VERTICAL_STRIP"
             reason = f"Subject detected at X={int(active_speaker_cx)}px. Centered at 540px in 9:16 Short."
@@ -384,7 +433,7 @@ class FaceDetector:
             for sc in speaker_candidates
         ]
 
-        return {
+        res = {
             "person_in_frame": True,
             "person_looking_in_frame": person_looking,
             "face_ratio": round(face_ratio, 2),
@@ -393,6 +442,7 @@ class FaceDetector:
             "tracked_person_cy": int(active_speaker_cy),
             "all_speakers": all_detected_speakers,
             "crop_x": crop_x,
+            "crop_x_expr": crop_x_expr,
             "crop_w": crop_w,
             "crop_h": crop_h,
             "is_corner_facecam": is_corner_facecam,
@@ -402,6 +452,8 @@ class FaceDetector:
             "source_width": width,
             "source_height": height
         }
+        self._framing_cache[cache_key] = res
+        return res
 
     @staticmethod
     def get_manual_corner_box(quadrant: str, width: int, height: int) -> Dict[str, int]:

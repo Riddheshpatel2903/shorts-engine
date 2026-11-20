@@ -203,21 +203,25 @@ class VideoEditor:
                 crop_w = crop_w - (crop_w % 2)  # ensure even
                 crop_h = src_h
 
-                # Determine horizontal center (person cx or action center)
-                person_cx = (
-                    layout_info.get("tracked_person_cx") or
-                    layout_info.get("person_cx") or
-                    (layout_info.get("speaker_center", [src_w // 2])[0] if isinstance(layout_info.get("speaker_center"), (list, tuple)) else None) or
-                    (layout_info.get("speaker_center", {}).get("x") if isinstance(layout_info.get("speaker_center"), dict) else None) or
-                    (src_w // 2)
-                )
-
-                crop_x = int(person_cx - crop_w / 2)
-                crop_x = max(0, min(src_w - crop_w, crop_x))
-                crop_x = crop_x - (crop_x % 2)
+                # Determine horizontal center (dynamic active-speaker switching expression or static coordinate)
+                dynamic_x = layout_info.get("crop_x_expr")
+                if dynamic_x and any(op in str(dynamic_x) for op in ("lt", "gt", "if", "t")):
+                    x_target = f"'{dynamic_x}'"
+                else:
+                    person_cx = (
+                        layout_info.get("tracked_person_cx") or
+                        layout_info.get("person_cx") or
+                        (layout_info.get("speaker_center", [src_w // 2])[0] if isinstance(layout_info.get("speaker_center"), (list, tuple)) else None) or
+                        (layout_info.get("speaker_center", {}).get("x") if isinstance(layout_info.get("speaker_center"), dict) else None) or
+                        (src_w // 2)
+                    )
+                    crop_x = int(person_cx - crop_w / 2)
+                    crop_x = max(0, min(src_w - crop_w, crop_x))
+                    crop_x = crop_x - (crop_x % 2)
+                    x_target = str(crop_x)
 
                 strip_filter = (
-                    f"[0:v]crop={crop_w}:{crop_h}:{crop_x}:0,"
+                    f"[0:v]crop={crop_w}:{crop_h}:{x_target}:0,"
                     f"scale={self.width}:{self.height}:flags=lanczos[framed]"
                 )
 

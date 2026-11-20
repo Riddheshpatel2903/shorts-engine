@@ -578,62 +578,77 @@ if st.session_state.nav_tab == "Clip Studio":
                 help="Choose layout as needed: Full Vertical Strip (no horizontal split cuts), Cinematic Blurred 16:9, or Dual Split."
             )
 
-            # Visual Subject & Gaze Direction Indicator
+            # Visual Subject & Automatic Speaker Centering Indicator
             src_w = int(data["analysis"]["probe"].get("width", 1920))
+            src_h = int(data["analysis"]["probe"].get("height", 1080))
             ai_speaker_cx = int(clip_framing.get("tracked_person_cx", src_w // 2))
+            crop_half = int((src_h * (1080 / 1920)) / 2)
+            auto_crop_start = max(0, min(src_w - crop_half * 2, ai_speaker_cx - crop_half))
 
-            # Initialize session state for manual speaker centering if not set
-            if "speaker_focus_cx" not in st.session_state:
-                st.session_state.speaker_focus_cx = ai_speaker_cx
+            clip_tag = f"{selected_mom_idx}_{int(start_val)}_{int(clip_len)}"
+            override_key = f"override_manual_{clip_tag}"
+            manual_cx_key = f"manual_cx_val_{clip_tag}"
 
-            # Display detection status
+            # Automatic Active-Speaker Tracking Status Display
             if clip_framing.get("person_in_frame"):
                 if clip_framing.get("person_looking_in_frame"):
                     p_badge = "🟢 Speaking Person (Looking Forward)"
                 else:
                     p_badge = "🟡 Person in Frame (Angled / Away)"
-                st.caption(f"**Visual Subject:** {p_badge} | AI Detected at: `X={ai_speaker_cx}px`")
-            else:
-                st.caption("**Visual Subject:** 🎮 Pure Gameplay / No Person in Frame (Action Centered)")
 
-            # Centering Controls: Slider + Quick Presets
-            with st.expander("👤 Speaking Person Centering Controls (Fine-Tune)", expanded=True):
-                st.caption("The speaking person will be framed at the exact horizontal center (540px) of the 9:16 Short:")
-
-                # Preset buttons
-                c_pre1, c_pre2, c_pre3, c_pre4 = st.columns(4)
-                with c_pre1:
-                    if st.button("👈 Left (25%)", key="btn_spk_left"):
-                        st.session_state.speaker_focus_cx = int(src_w * 0.25)
-                        st.rerun()
-                with c_pre2:
-                    if st.button("🎯 AI Speaker", key="btn_spk_ai"):
-                        st.session_state.speaker_focus_cx = ai_speaker_cx
-                        st.rerun()
-                with c_pre3:
-                    if st.button("👉 Right (75%)", key="btn_spk_right"):
-                        st.session_state.speaker_focus_cx = int(src_w * 0.75)
-                        st.rerun()
-                with c_pre4:
-                    if st.button("⏺️ Center (50%)", key="btn_spk_mid"):
-                        st.session_state.speaker_focus_cx = int(src_w * 0.50)
-                        st.rerun()
-
-                user_speaker_cx = st.slider(
-                    "Speaking Person X-Position in Source:",
-                    min_value=0,
-                    max_value=src_w,
-                    value=int(st.session_state.get("speaker_focus_cx", ai_speaker_cx)),
-                    step=10,
-                    help="Adjust to position the speaking person directly in the center of the vertical 9:16 frame."
+                st.success(
+                    f"🎯 **100% Automatic Speaker Tracking Active**\n\n"
+                    f"**Subject:** {p_badge} | Detected at **`X={ai_speaker_cx}px`** ➔ **Auto-Centered at 540px** in 9:16 Short "
+                    f"*(Crop Window: `[{auto_crop_start}px - {auto_crop_start + crop_half*2}px]`)*"
                 )
-                st.session_state.speaker_focus_cx = user_speaker_cx
+                if clip_framing.get("crop_x_expr") and any(op in str(clip_framing.get("crop_x_expr")) for op in ("lt", "gt", "if", "t")):
+                    st.info(f"⚡ **Dynamic Conversational Camera Cuts:** {clip_framing.get('reason')}")
+            else:
+                st.info(
+                    f"🎮 **Automatic Action Centering Active**\n\n"
+                    f"Pure gameplay / action detected ➔ Auto-centered at **`X={ai_speaker_cx}px`** (540px in 9:16 Short)."
+                )
 
-                # Show crop window feedback
-                src_h = int(data["analysis"]["probe"].get("height", 1080))
-                crop_half = int((src_h * (1080 / 1920)) / 2)
-                crop_start = max(0, min(src_w - crop_half * 2, user_speaker_cx - crop_half))
-                st.caption(f"📐 **9:16 Crop Window:** `[{crop_start}px - {crop_start + crop_half*2}px]` ➡️ **Speaker Centered at 540px**")
+            # Centering Controls: Optional Manual Override (Collapsed by default, zero user effort needed)
+            with st.expander("⚙️ Manual Framing Override (Optional)", expanded=False):
+                st.caption("Auto-tracking centers the active speaker automatically. Enable this only if you wish to override the AI centering:")
+                manual_override = st.checkbox("Enable manual positioning override", value=False, key=override_key)
+
+                if manual_cx_key not in st.session_state:
+                    st.session_state[manual_cx_key] = ai_speaker_cx
+
+                if manual_override:
+                    c_pre1, c_pre2, c_pre3, c_pre4 = st.columns(4)
+                    with c_pre1:
+                        if st.button("👈 Left (25%)", key=f"btn_left_{clip_tag}"):
+                            st.session_state[manual_cx_key] = int(src_w * 0.25)
+                            st.rerun()
+                    with c_pre2:
+                        if st.button("🎯 Reset to AI", key=f"btn_ai_{clip_tag}"):
+                            st.session_state[manual_cx_key] = ai_speaker_cx
+                            st.rerun()
+                    with c_pre3:
+                        if st.button("👉 Right (75%)", key=f"btn_right_{clip_tag}"):
+                            st.session_state[manual_cx_key] = int(src_w * 0.75)
+                            st.rerun()
+                    with c_pre4:
+                        if st.button("⏺️ Center (50%)", key=f"btn_mid_{clip_tag}"):
+                            st.session_state[manual_cx_key] = int(src_w * 0.50)
+                            st.rerun()
+
+                    user_speaker_cx = st.slider(
+                        "Manual Focus X-Position in Source:",
+                        min_value=0,
+                        max_value=src_w,
+                        value=int(st.session_state[manual_cx_key]),
+                        step=10,
+                        key=f"slider_{clip_tag}"
+                    )
+                    st.session_state[manual_cx_key] = user_speaker_cx
+                    m_crop_start = max(0, min(src_w - crop_half * 2, user_speaker_cx - crop_half))
+                    st.caption(f"📐 **Manual Crop Window:** `[{m_crop_start}px - {m_crop_start + crop_half*2}px]` ➡️ **Subject Centered at 540px**")
+                else:
+                    st.caption("*(Using AI Automatic Active-Speaker Tracking)*")
 
             st.caption(f"💡 **Framing Note:** {clip_framing.get('reason', '')}")
 
@@ -672,7 +687,11 @@ if st.session_state.nav_tab == "Clip Studio":
 
                     # Merge pinpoint clip framing into layout info so the editor tracks the person accurately
                     active_layout = {**analysis["layout"], **clip_framing}
-                    final_speaker_cx = st.session_state.get("speaker_focus_cx", ai_speaker_cx)
+                    if st.session_state.get(override_key, False):
+                        final_speaker_cx = int(st.session_state.get(manual_cx_key, ai_speaker_cx))
+                        active_layout["crop_x_expr"] = None  # user explicitly set fixed manual focus
+                    else:
+                        final_speaker_cx = ai_speaker_cx
                     active_layout["tracked_person_cx"] = final_speaker_cx
                     active_layout["person_cx"] = final_speaker_cx
 
