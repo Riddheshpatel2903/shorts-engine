@@ -28,9 +28,9 @@ class FaceDetector:
                     str(self.model_path),
                     "",
                     (320, 320),
-                    score_threshold=0.6,
+                    score_threshold=0.30,
                     nms_threshold=0.3,
-                    top_k=10
+                    top_k=15
                 )
                 logger.info("Initialized OpenCV YuNet DNN face detector.")
             except Exception as e:
@@ -101,44 +101,72 @@ class FaceDetector:
     def detect_faces_detailed(self, frame: np.ndarray) -> List[Dict[str, Any]]:
         """
         Detects faces and extracts detailed 5-point landmarks (eyes, nose, mouth)
-        to assess face size, horizontal center, and gaze direction (looking into camera vs away).
+        to assess face size, horizontal center, mouth openness, and gaze direction (looking into camera vs away).
+        Uses multi-scale pyramid (1.0x and 0.6x) to catch faces across all distances.
         """
         if self.detector is None or frame is None:
             return []
 
         h, w = frame.shape[:2]
         try:
-            self.detector.setInputSize((w, h))
-            ret, faces = self.detector.detect(frame)
+            # Multi-scale detection: try native first, then 0.6x if native missed
+            faces = None
+            detected_scale = 1.0
+
+            for scale in [1.0, 0.6]:
+                if scale == 1.0:
+                    detect_frame = frame
+                    self.detector.setInputSize((w, h))
+                else:
+                    sw, sh = int(w * scale), int(h * scale)
+                    detect_frame = cv2.resize(frame, (sw, sh))
+                    self.detector.setInputSize((sw, sw) if sw == sh else (sw, sh))
+
+                ret, detected = self.detector.detect(detect_frame)
+                if detected is not None and len(detected) > 0:
+                    detected_scale = scale
+                    faces = detected
+                    break
+
             if faces is None or len(faces) == 0:
                 return []
 
             results = []
+            inv_scale = 1.0 / detected_scale
+
             for f in faces:
-                x, y, fw, fh = int(f[0]), int(f[1]), int(f[2]), int(f[3])
+                x = int(f[0] * inv_scale)
+                y = int(f[1] * inv_scale)
+                fw = int(f[2] * inv_scale)
+                fh = int(f[3] * inv_scale)
+
                 x = max(0, x)
                 y = max(0, y)
                 fw = min(w - x, fw)
                 fh = min(h - y, fh)
-                if fw < 20 or fh < 20:
+                if fw < 18 or fh < 18:
                     continue
 
                 # Facial landmarks: right eye, left eye, nose tip, right mouth, left mouth
-                x_re, y_re = float(f[4]), float(f[5])
-                x_le, y_le = float(f[6]), float(f[7])
-                x_nt, y_nt = float(f[8]), float(f[9])
+                x_re, y_re = float(f[4] * inv_scale), float(f[5] * inv_scale)
+                x_le, y_le = float(f[6] * inv_scale), float(f[7] * inv_scale)
+                x_nt, y_nt = float(f[8] * inv_scale), float(f[9] * inv_scale)
+                x_rc, y_rc = float(f[10] * inv_scale), float(f[11] * inv_scale)
+                x_lc, y_lc = float(f[12] * inv_scale), float(f[13] * inv_scale)
                 score = float(f[14]) if len(f) > 14 else 0.8
 
-                eye_dist = abs(x_le - x_re)
-                if eye_dist > 6:
-                    eye_mid_x = (x_re + x_le) / 2.0
-                    gaze_dev = abs(x_nt - eye_mid_x) / eye_dist
-                    is_looking_in_frame = gaze_dev < 0.38
-                    eye_tilt = abs(y_re - y_le) / eye_dist
-                    is_upright = eye_tilt < 0.45
-                else:
-                    is_looking_in_frame = True
-                    is_upright = True
+                eye_dist = max(1.0, abs(x_le - x_re))
+                eye_mid_x = (x_re + x_le) / 2.0
+                gaze_dev = abs(x_nt - eye_mid_x) / eye_dist
+                is_looking_in_frame = gaze_dev < 0.40
+                eye_tilt = abs(y_re - y_le) / eye_dist
+                is_upright = eye_tilt < 0.45
+
+                # Mouth opening & speech dynamics calculation
+                mouth_w = max(1.0, abs(x_lc - x_rc))
+                mouth_mid_y = (y_rc + y_lc) / 2.0
+                mouth_h = max(1.0, abs(mouth_mid_y - y_nt))
+                mouth_open = mouth_h / mouth_w
 
                 cx = x + fw / 2.0
                 cy = y + fh / 2.0
@@ -151,6 +179,7 @@ class FaceDetector:
                     "width": fw,
                     "height": fh,
                     "area_ratio": area_ratio,
+                    "mouth_open": mouth_open,
                     "is_looking_in_frame": bool(is_looking_in_frame and is_upright),
                     "score": score
                 })
@@ -260,33 +289,70 @@ class FaceDetector:
                 "reason": "No person in frame (pure gameplay/action). Cinematic blurred backdrop preserves widescreen HUD & action, or use Full Vertical Strip for centered action."
             }
 
-        primary_faces = [fr["faces"][0] for fr in frames_with_faces]
-        looking_faces = [f for f in primary_faces if f["is_looking_in_frame"]]
-        looking_ratio = len(looking_faces) / max(1, len(primary_faces))
-        person_looking = looking_ratio >= 0.35
+        # Cluster all detected faces into distinct person tracks across the clip
+        clusters = []
+        for fr in frames_with_faces:
+            for face in fr["faces"]:
+                matched = False
+                for c in clusters:
+                    if abs(c["cx_mean"] - face["cx"]) < (width * 0.18):
+                        c["items"].append(face)
+                        c["cx_mean"] = float(np.mean([item["cx"] for item in c["items"]]))
+                        matched = True
+                        break
+                if not matched:
+                    clusters.append({"cx_mean": face["cx"], "items": [face]})
 
-        cxs = [f["cx"] for f in primary_faces]
-        cys = [f["cy"] for f in primary_faces]
-        avg_w = sum(f["width"] for f in primary_faces) / len(primary_faces)
-        median_cx = float(np.median(cxs))
-        median_cy = float(np.median(cys))
+        speaker_candidates = []
+        for c in clusters:
+            cxs = [item["cx"] for item in c["items"]]
+            cys = [item["cy"] for item in c["items"]]
+            areas = [item["area_ratio"] for item in c["items"]]
+            mouth_opens = [item.get("mouth_open", 0.3) for item in c["items"]]
+            looking_count = sum(1 for item in c["items"] if item.get("is_looking_in_frame"))
 
-        is_corner_x = (median_cx < width * 0.35) or (median_cx > width * 0.65)
+            mouth_var = float(np.var(mouth_opens)) if len(mouth_opens) > 1 else 0.001
+            avg_area = float(np.mean(areas))
+            presence = len(c["items"])
+
+            # Speaker score: lip motion cadence + gaze toward viewer + screen presence
+            score = presence * (avg_area ** 0.5) * (1.0 + mouth_var * 50.0) * (1.3 if looking_count > 0 else 0.8)
+
+            speaker_candidates.append({
+                "median_cx": float(np.median(cxs)),
+                "median_cy": float(np.median(cys)),
+                "avg_w": float(np.mean([item["width"] for item in c["items"]])),
+                "avg_h": float(np.mean([item["height"] for item in c["items"]])),
+                "mouth_var": mouth_var,
+                "score": score,
+                "presence": presence,
+                "looking_ratio": looking_count / max(1, presence)
+            })
+
+        speaker_candidates.sort(key=lambda x: x["score"], reverse=True)
+        active_speaker = speaker_candidates[0]
+
+        active_speaker_cx = active_speaker["median_cx"]
+        active_speaker_cy = active_speaker["median_cy"]
+        avg_w = active_speaker["avg_w"]
+        avg_h = active_speaker["avg_h"]
+        person_looking = active_speaker["looking_ratio"] >= 0.35
+
+        is_corner_x = (active_speaker_cx < width * 0.35) or (active_speaker_cx > width * 0.65)
         is_small = avg_w < (width * 0.35)
         is_corner_facecam = is_corner_x and is_small
 
-        crop_x = int(median_cx - crop_w / 2)
+        # PRECISE CENTERING: Center the speaking person exactly in the 9:16 frame!
+        crop_x = int(active_speaker_cx - crop_w / 2)
         crop_x = max(0, min(width - crop_w, crop_x))
         crop_x = crop_x - (crop_x % 2)
 
         facecam_box = None
         if is_corner_facecam:
             recommended = "STREAMER_SPLIT"
-            corner_label = "left" if median_cx < width * 0.5 else "right"
-            reason = f"Streamer webcam detected in {corner_label} corner. Pro Dual-View (Facecam Top + Full Game View Bottom) preserves 100% of game HUD and killfeed."
+            corner_label = "left" if active_speaker_cx < width * 0.5 else "right"
+            reason = f"Streamer webcam detected in {corner_label} corner (X={int(active_speaker_cx)}px). Pro Dual-View preserves 100% of game HUD."
 
-            # Compute optimal padded facecam box with headroom and shoulder framing
-            avg_h = sum(f["height"] for f in primary_faces) / len(primary_faces)
             target_aspect = 1080 / 760  # 1.421:1
             box_h = int(avg_h * 2.3)
             box_w = int(box_h * target_aspect)
@@ -297,8 +363,8 @@ class FaceDetector:
                 box_h = height
                 box_w = int(box_h * target_aspect)
 
-            box_x = max(0, min(width - box_w, int(median_cx - box_w / 2)))
-            box_y = max(0, min(height - box_h, int(median_cy - box_h * 0.38)))
+            box_x = max(0, min(width - box_w, int(active_speaker_cx - box_w / 2)))
+            box_y = max(0, min(height - box_h, int(active_speaker_cy - box_h * 0.38)))
 
             facecam_box = {
                 "x": box_x,
@@ -308,18 +374,24 @@ class FaceDetector:
             }
         elif person_looking:
             recommended = "FULL_VERTICAL_STRIP"
-            reason = f"Person looking directly at camera detected (centered at X={int(median_cx)}px). Full Vertical Strip tracks them seamlessly in 9:16."
+            reason = f"Speaking person detected at X={int(active_speaker_cx)}px (Active Lip Motion). Centered at 540px in 9:16 Short."
         else:
             recommended = "FULL_VERTICAL_STRIP"
-            reason = f"Subject in frame (centered at X={int(median_cx)}px). Full Vertical Strip tracks the subject in 9:16."
+            reason = f"Subject detected at X={int(active_speaker_cx)}px. Centered at 540px in 9:16 Short."
+
+        all_detected_speakers = [
+            {"cx": int(sc["median_cx"]), "label": f"Person at X={int(sc['median_cx'])}px"}
+            for sc in speaker_candidates
+        ]
 
         return {
             "person_in_frame": True,
             "person_looking_in_frame": person_looking,
             "face_ratio": round(face_ratio, 2),
-            "looking_ratio": round(looking_ratio, 2),
-            "tracked_person_cx": int(median_cx),
-            "tracked_person_cy": int(median_cy),
+            "looking_ratio": round(active_speaker["looking_ratio"], 2),
+            "tracked_person_cx": int(active_speaker_cx),
+            "tracked_person_cy": int(active_speaker_cy),
+            "all_speakers": all_detected_speakers,
             "crop_x": crop_x,
             "crop_w": crop_w,
             "crop_h": crop_h,

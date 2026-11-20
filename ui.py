@@ -579,15 +579,61 @@ if st.session_state.nav_tab == "Clip Studio":
             )
 
             # Visual Subject & Gaze Direction Indicator
+            src_w = int(data["analysis"]["probe"].get("width", 1920))
+            ai_speaker_cx = int(clip_framing.get("tracked_person_cx", src_w // 2))
+
+            # Initialize session state for manual speaker centering if not set
+            if "speaker_focus_cx" not in st.session_state:
+                st.session_state.speaker_focus_cx = ai_speaker_cx
+
+            # Display detection status
             if clip_framing.get("person_in_frame"):
                 if clip_framing.get("person_looking_in_frame"):
-                    p_badge = "🟢 Person Looking in Frame"
+                    p_badge = "🟢 Speaking Person (Looking Forward)"
                 else:
                     p_badge = "🟡 Person in Frame (Angled / Away)"
-                cx_val = clip_framing.get("tracked_person_cx", 960)
-                st.caption(f"**Visual Subject:** {p_badge} | Tracked Center: `X={cx_val}px`")
+                st.caption(f"**Visual Subject:** {p_badge} | AI Detected at: `X={ai_speaker_cx}px`")
             else:
                 st.caption("**Visual Subject:** 🎮 Pure Gameplay / No Person in Frame (Action Centered)")
+
+            # Centering Controls: Slider + Quick Presets
+            with st.expander("👤 Speaking Person Centering Controls (Fine-Tune)", expanded=True):
+                st.caption("The speaking person will be framed at the exact horizontal center (540px) of the 9:16 Short:")
+
+                # Preset buttons
+                c_pre1, c_pre2, c_pre3, c_pre4 = st.columns(4)
+                with c_pre1:
+                    if st.button("👈 Left (25%)", key="btn_spk_left"):
+                        st.session_state.speaker_focus_cx = int(src_w * 0.25)
+                        st.rerun()
+                with c_pre2:
+                    if st.button("🎯 AI Speaker", key="btn_spk_ai"):
+                        st.session_state.speaker_focus_cx = ai_speaker_cx
+                        st.rerun()
+                with c_pre3:
+                    if st.button("👉 Right (75%)", key="btn_spk_right"):
+                        st.session_state.speaker_focus_cx = int(src_w * 0.75)
+                        st.rerun()
+                with c_pre4:
+                    if st.button("⏺️ Center (50%)", key="btn_spk_mid"):
+                        st.session_state.speaker_focus_cx = int(src_w * 0.50)
+                        st.rerun()
+
+                user_speaker_cx = st.slider(
+                    "Speaking Person X-Position in Source:",
+                    min_value=0,
+                    max_value=src_w,
+                    value=int(st.session_state.get("speaker_focus_cx", ai_speaker_cx)),
+                    step=10,
+                    help="Adjust to position the speaking person directly in the center of the vertical 9:16 frame."
+                )
+                st.session_state.speaker_focus_cx = user_speaker_cx
+
+                # Show crop window feedback
+                src_h = int(data["analysis"]["probe"].get("height", 1080))
+                crop_half = int((src_h * (1080 / 1920)) / 2)
+                crop_start = max(0, min(src_w - crop_half * 2, user_speaker_cx - crop_half))
+                st.caption(f"📐 **9:16 Crop Window:** `[{crop_start}px - {crop_start + crop_half*2}px]` ➡️ **Speaker Centered at 540px**")
 
             st.caption(f"💡 **Framing Note:** {clip_framing.get('reason', '')}")
 
@@ -626,6 +672,9 @@ if st.session_state.nav_tab == "Clip Studio":
 
                     # Merge pinpoint clip framing into layout info so the editor tracks the person accurately
                     active_layout = {**analysis["layout"], **clip_framing}
+                    final_speaker_cx = st.session_state.get("speaker_focus_cx", ai_speaker_cx)
+                    active_layout["tracked_person_cx"] = final_speaker_cx
+                    active_layout["person_cx"] = final_speaker_cx
 
                     out_path = exporter.render_clip(
                         source_path=data["source_path"],
