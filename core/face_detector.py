@@ -279,10 +279,33 @@ class FaceDetector:
         crop_x = max(0, min(width - crop_w, crop_x))
         crop_x = crop_x - (crop_x % 2)
 
+        facecam_box = None
         if is_corner_facecam:
             recommended = "STREAMER_SPLIT"
             corner_label = "left" if median_cx < width * 0.5 else "right"
-            reason = f"Streamer webcam detected in {corner_label} corner. Dual split-screen or full vertical strip available."
+            reason = f"Streamer webcam detected in {corner_label} corner. Pro Dual-View (Facecam Top + Full Game View Bottom) preserves 100% of game HUD and killfeed."
+
+            # Compute optimal padded facecam box with headroom and shoulder framing
+            avg_h = sum(f["height"] for f in primary_faces) / len(primary_faces)
+            target_aspect = 1080 / 760  # 1.421:1
+            box_h = int(avg_h * 2.3)
+            box_w = int(box_h * target_aspect)
+            if box_w > width:
+                box_w = width
+                box_h = int(box_w / target_aspect)
+            if box_h > height:
+                box_h = height
+                box_w = int(box_h * target_aspect)
+
+            box_x = max(0, min(width - box_w, int(median_cx - box_w / 2)))
+            box_y = max(0, min(height - box_h, int(median_cy - box_h * 0.38)))
+
+            facecam_box = {
+                "x": box_x,
+                "y": box_y,
+                "width": box_w,
+                "height": box_h
+            }
         elif person_looking:
             recommended = "FULL_VERTICAL_STRIP"
             reason = f"Person looking directly at camera detected (centered at X={int(median_cx)}px). Full Vertical Strip tracks them seamlessly in 9:16."
@@ -301,6 +324,7 @@ class FaceDetector:
             "crop_w": crop_w,
             "crop_h": crop_h,
             "is_corner_facecam": is_corner_facecam,
+            "facecam_box": facecam_box,
             "recommended_layout": recommended,
             "reason": reason,
             "source_width": width,

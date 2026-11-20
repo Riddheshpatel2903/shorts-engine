@@ -554,17 +554,19 @@ if st.session_state.nav_tab == "Clip Studio":
 
             layout_options = [
                 "AUTO",
+                "STREAMER_SPLIT",
+                "STREAMER_ZOOMED_GAME",
                 "FULL_VERTICAL_STRIP",
                 "CINEMATIC_BLUR",
-                "STREAMER_SPLIT",
                 "PODCAST_SPLIT"
             ]
 
             layout_format = {
                 "AUTO": f"🤖 Auto-Adaptive ({rec_mode})",
+                "STREAMER_SPLIT": "✂️ Pro Gamer Dual-View (Facecam Top + Full Uncropped Game HUD)",
+                "STREAMER_ZOOMED_GAME": "✂️ Dual View (Facecam Top + Zoomed Game Action)",
                 "FULL_VERTICAL_STRIP": "📱 Full Vertical Strip (Person / Action Centered 9:16)",
-                "CINEMATIC_BLUR": "🎬 Cinematic 16:9 (Full View + Blurred Backdrop)",
-                "STREAMER_SPLIT": "✂️ Dual Split-Screen (Facecam Top + Gameplay Bottom)",
+                "CINEMATIC_BLUR": "🎬 Cinematic 16:9 (Full Game View + Blurred Backdrop)",
                 "PODCAST_SPLIT": "🎙️ Podcast Split (Host Top / Guest Bottom)"
             }
 

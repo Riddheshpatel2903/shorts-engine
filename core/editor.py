@@ -138,30 +138,53 @@ class VideoEditor:
             filters.extend([bg_filter, top_filter, bot_filter, overlay_filter])
             current_v = "[framed]"
 
-        elif mode == "STREAMER_SPLIT":
-            # Layout: Top Facecam + Bottom Gameplay + Blurred Backdrop
+        elif mode in ("STREAMER_SPLIT", "STREAMER_PRO", "STREAMER_FULL_GAME", "STREAMER_ZOOMED_GAME"):
+            # Layout: Pro Streamer Dual-View (Top Facecam + Bottom Gameplay + Blurred Backdrop)
             f_box = normalize_box(facecam_box, src_w, src_h)
             fx, fy, fw, fh = f_box["x"], f_box["y"], f_box["width"], f_box["height"]
 
+            # 1. Canvas blurred motion backdrop
             bg_filter = (
                 f"[0:v]scale={self.width}:{self.height}:force_original_aspect_ratio=increase,"
                 f"crop={self.width}:{self.height},"
-                f"boxblur=25:2,eq=brightness=-0.15[bg]"
+                f"boxblur=25:5,eq=brightness=-0.15[bg]"
             )
+
+            # 2. Top Facecam: crop with headroom, scale to 1080x760
             face_filter = (
                 f"[0:v]crop={fw}:{fh}:{fx}:{fy},"
                 f"scale={self.width}:760:force_original_aspect_ratio=increase,"
                 f"crop={self.width}:760[facecam]"
             )
-            game_filter = (
-                f"[0:v]scale={self.width}:1160:force_original_aspect_ratio=increase,"
-                f"crop={self.width}:1160[gameplay]"
-            )
-            overlay_filter = (
-                f"[bg][facecam]overlay=0:0[comp1];"
-                f"[comp1][gameplay]overlay=0:760[framed]"
-            )
-            filters.extend([bg_filter, face_filter, game_filter, overlay_filter])
+
+            if mode == "STREAMER_ZOOMED_GAME":
+                # Action-zoomed gameplay filling full bottom 1080x1160 area
+                game_filter = (
+                    f"[0:v]scale={self.width}:1160:force_original_aspect_ratio=increase,"
+                    f"crop={self.width}:1160[gameplay]"
+                )
+                overlay_filter = (
+                    f"[bg][facecam]overlay=0:0[comp1];"
+                    f"[comp1]drawbox=x=0:y=756:w={self.width}:h=4:color=0x00E5FF@0.9:t=fill[comp2];"
+                    f"[comp2][gameplay]overlay=0:760[framed]"
+                )
+                filters.extend([bg_filter, face_filter, game_filter, overlay_filter])
+            else:
+                # Pro Gamer Default: Uncropped Full 16:9 Game Screen in bottom area
+                # Preserves 100% of game HUD, minimap, radar, crosshairs, and killfeed!
+                game_filter = (
+                    f"[0:v]scale={self.width}:-1[gameplay]"
+                )
+                game_y = 760 + (1160 - 608) // 2  # y = 1036
+                overlay_filter = (
+                    f"[bg][facecam]overlay=0:0[comp1];"
+                    f"[comp1]drawbox=x=0:y=756:w={self.width}:h=4:color=0x00E5FF@0.9:t=fill[comp2];"
+                    f"[comp2][gameplay]overlay=0:{game_y}[comp3];"
+                    f"[comp3]drawbox=x=0:y={game_y-2}:w={self.width}:h=2:color=white@0.6:t=fill,"
+                    f"drawbox=x=0:y={game_y+608}:w={self.width}:h=2:color=white@0.6:t=fill[framed]"
+                )
+                filters.extend([bg_filter, face_filter, game_filter, overlay_filter])
+
             current_v = "[framed]"
 
         elif mode in ("FULL_VERTICAL_STRIP", "SMART_VERTICAL_CROP", "TALKING_HEAD"):
@@ -216,19 +239,23 @@ class VideoEditor:
             current_v = "[framed]"
 
         else:
-            # Layout: CINEMATIC_BLUR (Default)
-            # Background: blurred & darkened
-            # Foreground: 16:9 source scaled to 1080 width, centered vertically
+            # Layout: CINEMATIC_BLUR (Default for wide gameplay & landscapes)
+            # Background: high-aesthetic blurred motion backdrop
+            # Foreground: 16:9 source scaled to 1080 width, centered vertically with crisp accent edge dividers
             bg_filter = (
                 f"[0:v]scale={self.width}:{self.height}:force_original_aspect_ratio=increase,"
                 f"crop={self.width}:{self.height},"
-                f"boxblur=25:2,eq=brightness=-0.15[bg]"
+                f"boxblur=25:5,eq=brightness=-0.15[bg]"
             )
             fg_filter = (
                 f"[0:v]scale={self.width}:-1[fg]"
             )
+            # 16:9 at 1080 width is 1080x608, centered at y = (1920 - 608) // 2 = 656
+            game_y = (self.height - 608) // 2
             overlay_filter = (
-                f"[bg][fg]overlay=0:(1920-h)/2[framed]"
+                f"[bg][fg]overlay=0:{game_y}[comp1];"
+                f"[comp1]drawbox=x=0:y={game_y-2}:w={self.width}:h=2:color=0x00E5FF@0.7:t=fill,"
+                f"drawbox=x=0:y={game_y+608}:w={self.width}:h=2:color=0x00E5FF@0.7:t=fill[framed]"
             )
             filters.extend([bg_filter, fg_filter, overlay_filter])
             current_v = "[framed]"
