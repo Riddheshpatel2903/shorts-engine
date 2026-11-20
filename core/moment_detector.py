@@ -30,7 +30,9 @@ COMEDY_PATTERNS = [
     r"\b(i can'?t breathe|dying laughing|deadass|bro is wilding|outta pocket|funniest thing|cracking up|comedy gold)\b",
     r"\b(what is he doing|bro thought|look at him|no shot bro|he got cooked|he actually did that|that'?s foul|bro fell)\b",
     r"\b(literally crying|i am dead|can'?t make this up|joke of the year|roast|clowning|ridiculous|unhinged|goofy)\b",
-    r"\b(the dumbest thing|the funniest|are you kidding me|no way in hell|bro really said|wildest thing)\b"
+    r"\b(the dumbest thing|the funniest|are you kidding me|no way in hell|bro really said|wildest thing)\b",
+    # Hindi / Hinglish comedy & roast
+    r"\b(bhai\s*kya\s*tha\s*ye|are\s*bhai\s*bhai|khatam|tata\s*bye\s*bye|gaya\s*gaya|kya\s*goofy\s*hai|chutiya|roast\s*kar\s*diya|cooked\s*hai|scene\s*ho\s*gaya|beizzatti|kya\s*scene\s*hai|haste\s*haste|lotpot|pagal\s*hai\s*kya|jalwa\s*hai)\b"
 ]
 
 # 2. BEST ADVICE & EDUCATIONAL PATTERNS
@@ -66,21 +68,27 @@ RAGE_PATTERNS = [
     r"\b(are you (serious|kidding me)|what the (f\*\*\*|fuck|hell)|unbelievable|trash|garbage|this game is (broken|horrible|rigged))\b",
     r"\b(i hate this|stop it|shut up|you suck|are you dumb|stupid|idiot|cheating|hacker|hax|rigged|bullshit|scam)\b",
     r"\b(why would you do that|no way bro|i am done|i quit|uninstall|i cannot with this|smash my|rage)\b",
-    r"\b(how did he not die|he is one shot|missed every shot|aim assist|so bad|i'?m so mad|pissed off|absolute nonsense)\b"
+    r"\b(how did he not die|he is one shot|missed every shot|aim assist|so bad|i'?m so mad|pissed off|absolute nonsense)\b",
+    # Hindi / Hinglish Streamer Rage
+    r"\b(arre\s*yaar|arre\s*bc|are\s*yaar|kya\s*kar\s*raha\s*hai|kaise\s*mara|hacker\s*hai|cheater|lag\s*ho\s*gaya|ping\s*high\s*hai|glitch|miss\s*ho\s*gaya|chup\s*kar|bakwas|ganda\s*mara|choke\s*kar\s*diya|scam\s*hai|dimaag\s*kharab)\b"
 ]
 
 # 5. STREAMER REACTION: HAPPY & CELEBRATION WINS
 HAPPY_PATTERNS = [
     r"\b(let'?s go|we did it|yes yes yes|finally|huge win|massive win|ez|easy|pog|poggers|w in the chat|clutch)\b",
     r"\b(i am so happy|best day ever|thank you so much|we won|champion|victory|unreal|insane play|clean play)\b",
-    r"\b(i love you guys|blessed|grateful|dream come true|we hit it|record broken|world record|flawless|let'?s freaking go)\b"
+    r"\b(i love you guys|blessed|grateful|dream come true|we hit it|record broken|world record|flawless|let'?s freaking go)\b",
+    # Hindi / Hinglish celebration
+    r"\b(bhai\s*jeet\s*gaye|kya\s*mara\s*bhai|op\s*bolte|swag\s*hai|jalwa\s*hai|bawaal\s*hai|chha\s*gaye|maza\s*aa\s*gaya|booyah|chicken\s*dinner)\b"
 ]
 
 # 6. STREAMER REACTION: SHOCKED & DISBELIEF (HYPE)
 SHOCK_PATTERNS = [
     r"\b(what (just happened|the hell)|oh my god|holy (shit|moly|crap)|bro what|wait wait wait|hold on a second)\b",
     r"\b(no way|did you see that|are you seeing this|how did that happen|what was that|look at that|did that just happen)\b",
-    r"\b(what in the world|i cannot believe|that is impossible|ain'?t no way|is this real|you are lying|jaw dropped)\b"
+    r"\b(what in the world|i cannot believe|that is impossible|ain'?t no way|is this real|you are lying|jaw dropped)\b",
+    # Hindi / Hinglish shock
+    r"\b(bhai\s*ye\s*kya\s*ho\s*gaya|ye\s*kya\s*dekh\s*liya|unreal\s*bhai|no\s*way\s*bhai|kya\s*hi\s*shot\s*tha|insane\s*shot|god\s*level|next\s*level\s*play|baap\s*hai)\b"
 ]
 
 # 7. GEOPOLITICS, GLOBAL CONFLICT & DIPLOMATIC CLASH
@@ -94,7 +102,9 @@ GEOPOLITICS_CONFLICT_PATTERNS = [
 # 8. SUPERCHAT, VIEWER DONATION & CONTROVERSY CLAPBACKS
 SUPERCHAT_CONTROVERSY_PATTERNS = [
     r"\b(someone in chat (said|is saying)|chat is asking|this (superchat|donation) says|\$\d+ from|donation from|reading chat|why did you do|did you really|answering the allegation|addressing the drama)\b",
-    r"\b(first of all|let me set the record straight|that is complete bullshit|you don'?t know what happened|let me address this|stop spreading lies|i have the receipts|here is the proof|i never said that|listen to me chat)\b"
+    r"\b(first of all|let me set the record straight|that is complete bullshit|you don'?t know what happened|let me address this|stop spreading lies|i have the receipts|here is the proof|i never said that|listen to me chat)\b",
+    # Hindi / Hinglish Superchat
+    r"\b(bhai\s*shoutout|superchat\s*aayi|donation\s*aayi|chat\s*mein\s*bol\s*rahe|chat\s*padho|bhai\s*reply\s*do|bhai\s*padh\s*lo|thank\s*you\s*bhai|super\s*chat\s*from|superchat\s*ke\s*liye\s*shukriya)\b"
 ]
 
 # 9. STREAMER WATCHING & REACTING TO OTHER CREATOR DRAMA
@@ -106,7 +116,10 @@ DRAMA_REACTION_PATTERNS = [
 # 10. GAMEPLAY ACTION: MULTI-KILLS, FLICKS & UNEXPECTED CLUTCHES
 GAMEPLAY_ACTION_CLUTCH_PATTERNS = [
     r"\b(one down|two down|three down|another one|triple kill|quad kill|ace|1v\d clutch|he'?s one shot|where did he come from|insane flick|how did i hit that|clutch or kick|clean headshot|unexpected kill|sniped him|wiped the whole team)\b",
-    r"\b(clutching this|no way i survived|how am i alive|spray transfer|got him through the smoke|flawless round)\b"
+    r"\b(clutching this|no way i survived|how am i alive|spray transfer|got him through the smoke|flawless round)\b",
+    # BGMI, PUBG, FreeFire, Valorant & Indian Gaming Slang
+    r"\b(bhai\s*(dekh|mara|kya)|mar\s*gaya|knock|knocked|down\s*kiya|finish\s*kiya|spray\s*diya|clean\s*spray|headshot|patt\s*se|last\s*banda|last\s*man|rush\s*kar|rush\s*maro|squad\s*wipe|1v4|1v3|1v2|clutch\s*kiya|op\s*clutch|zone\s*pakad|gadi\s*se\s*utra|flank\s*mara|smoke\s*kar|revive\s*de|peel\s*diya|pel\s*diya|kya\s*mara\s*bhai|op\s*bolte|pure\s*team\s*ko|mop\s*up)\b",
+    r"\b(crate\s*opening|glacier|m416|awm|drop\s*loot|red\s*zone|winner\s*winner|chicken\s*dinner|rank\s*push|conqueror|ace\s*dominator|scout|jonathan|mortal|dynamo|bgmi|battlegrounds)\b"
 ]
 
 # 11. GTA 6 & NEW GAME LAUNCH REACTIONS & PHYSICS
@@ -371,6 +384,7 @@ class MomentDetector:
                 "category": cat,
                 "category_label": f"{label} #{idx}",
                 "hook_text": f"High acoustic reaction peak detected at {m}m {s:02d}s",
+                "why_viral": f"Peak acoustic reaction spike in stream ({rms_val:.3f} RMS). Emotional shouting / laughter climax.",
                 "rage_score": 88.0,
                 "happy_score": 75.0,
                 "shock_score": 92.0,

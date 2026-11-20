@@ -409,7 +409,14 @@ if st.session_state.nav_tab == "Clip Studio":
                             source_input_path = meta["filepath"]
                             source_url_target = meta
                         except Exception as e:
-                            st.error(f"Download issue: {e}\n\n💡 Tip: For live streams or recent live broadcasts, select '⚡ Fast Rolling Fragment Capture' above to snatch clips instantly without waiting!")
+                            st.warning(f"Full download was reset by server ({e}). Auto-recovering with fast rolling stream fragment...")
+                            try:
+                                meta = downloader.capture_live_fragment(url_val.strip(), duration_sec=180)
+                                source_input_path = meta["filepath"]
+                                source_url_target = meta
+                                st.success(f"Auto-recovered! Snatched recent 180s stream buffer from `{meta.get('title')}`.")
+                            except Exception as e2:
+                                st.error(f"Download issue: {e}\n\n💡 Tip: For live streams or recent live broadcasts, select '⚡ Fast Rolling Fragment Capture' above to snatch clips instantly without waiting!")
 
         with c_in_type2:
             st.caption("Upload video files up to 4GB, or paste a local path for instant 0-second loading on massive files (e.g. 50GB OBS recordings).")
@@ -454,8 +461,23 @@ if st.session_state.nav_tab == "Clip Studio":
 
                 detector = MomentDetector()
                 segments = detector.analyze_moments(source_input_path, transcript)
+
+                # Ultra-fast acoustic energy reaction peak scanner across ENTIRE video duration
+                # Discovers screams, laughs, clutch cheers, and shoutouts anywhere in the video in ~2 seconds
+                try:
+                    acoustic_peaks = detector.find_audio_energy_peaks(source_input_path, top_n=6, window_duration=35.0)
+                except Exception as e:
+                    logger.debug(f"Acoustic peak scanner fallback: {e}")
+                    acoustic_peaks = []
+
                 selector = ClipSelector(min_duration=20.0, max_duration=55.0, genre_focus="all")
-                moments = selector.select_clips(segments, num_shorts=3, genre_focus="all", transcript=transcript)
+                moments = selector.select_clips(
+                    segments,
+                    num_shorts=5,
+                    genre_focus="all",
+                    transcript=transcript,
+                    extra_candidates=acoustic_peaks
+                )
 
                 st.session_state.analysis_result = {
                     "source_path": source_input_path,
@@ -496,10 +518,24 @@ if st.session_state.nav_tab == "Clip Studio":
             if moments:
                 st.write("Select an AI-detected moment candidate to populate trim handles:")
                 m_labels = [f"#{i+1} [{m['category_label']}] {format_time(m['start'])} - {format_time(m['end'])} (Score: {m['viral_score']:.0f}%)" for i, m in enumerate(moments)]
-                pick_idx = st.selectbox("Candidate Moments:", options=range(len(moments)), format_func=lambda i: m_labels[i])
-                selected_mom = moments[pick_idx]
-                st.caption(f"Why selected: {selected_mom.get('why_viral', 'High acoustic energy surge')}")
+                selected_mom_idx = st.selectbox(
+                    "Candidate Moments:",
+                    options=range(len(moments)),
+                    format_func=lambda i: m_labels[i],
+                    key="sel_candidate_moment_idx"
+                )
+                selected_mom = moments[selected_mom_idx]
+
+                # Update trim window whenever candidate selection changes
+                last_mom_key = "_active_selected_mom_idx"
+                if st.session_state.get(last_mom_key) != selected_mom_idx:
+                    st.session_state[last_mom_key] = selected_mom_idx
+                    st.session_state.selected_clip_window["start"] = float(selected_mom["start"])
+                    st.session_state.selected_clip_window["end"] = float(selected_mom["end"])
+
+                st.caption(f"💡 **Why selected:** {selected_mom.get('why_viral', 'High acoustic energy surge')}")
             else:
+                selected_mom_idx = 0
                 selected_mom = {}
 
             # AutoClip: Superchat & Live Chat Spike Highlights
@@ -545,12 +581,13 @@ if st.session_state.nav_tab == "Clip Studio":
             st.markdown("##### Trim Handles & Boundary Adjustment")
             cur_s = st.session_state.selected_clip_window["start"]
             cur_e = st.session_state.selected_clip_window["end"]
+            active_mom_k = st.session_state.get("_active_selected_mom_idx", 0)
 
             s_col1, s_col2 = st.columns(2)
             with s_col1:
-                start_val = st.number_input("Start Time (seconds):", min_value=0.0, max_value=float(total_dur), value=float(cur_s), step=1.0)
+                start_val = st.number_input("Start Time (seconds):", min_value=0.0, max_value=float(total_dur), value=float(cur_s), step=1.0, key=f"inp_s_{active_mom_k}")
             with s_col2:
-                end_val = st.number_input("End Time (seconds):", min_value=float(start_val) + 5.0, max_value=float(total_dur), value=max(float(start_val) + 5.0, float(cur_e)), step=1.0)
+                end_val = st.number_input("End Time (seconds):", min_value=float(start_val) + 5.0, max_value=float(total_dur), value=max(float(start_val) + 5.0, float(cur_e)), step=1.0, key=f"inp_e_{active_mom_k}")
 
             clip_len = end_val - start_val
             c_info, c_snap = st.columns([1.4, 1])

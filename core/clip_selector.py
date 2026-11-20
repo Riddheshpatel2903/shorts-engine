@@ -191,9 +191,12 @@ class ClipSelector:
         elif self.genre_focus in ["motivation", "motivational", "mindset"]:
             score = (window_motivation * 0.65) + (avg_cadence * 0.15) + (avg_general * 0.20) + boundary_bonus
         else:
-            # "all" / "auto": Boost highest genre category strength with multi-modal energy!
+            # "all" / "auto": Multi-modal scoring blending genre power, acoustic peak surges, and hook velocity!
             genre_power = max(category_map.values())
-            score = (avg_general * 0.25) + (genre_power * 0.55) + (avg_audio * 0.20) + boundary_bonus
+            energy_boost = (avg_audio - 50.0) * 0.45 if avg_audio > 50.0 else 0.0
+            hook_boost = (hook_power - 40.0) * 0.35 if hook_power > 40.0 else 0.0
+            raw_score = (genre_power * 0.45) + (avg_audio * 0.25) + (avg_general * 0.15) + (avg_cadence * 0.10) + boundary_bonus + energy_boost + hook_boost
+            score = min(99.0, max(50.0, raw_score))
 
         radar = {
             "Acoustic Peak": min(100, int(avg_audio)),
@@ -222,23 +225,36 @@ class ClipSelector:
     def select_clips(
         self,
         analyzed_segments: List[Dict[str, Any]],
-        num_shorts: int = 3,
+        num_shorts: int = 4,
         overlap_threshold: float = 0.35,
         genre_focus: Optional[str] = None,
-        transcript: Optional[Dict[str, Any]] = None
+        transcript: Optional[Dict[str, Any]] = None,
+        extra_candidates: Optional[List[Dict[str, Any]]] = None
     ) -> List[Dict[str, Any]]:
         """
         Generates candidate clips across the video and ranks top non-overlapping clips
         matching the desired viral genre (Comedy, Advice, Motivation, or Auto).
+        Integrates audio reaction peaks and crowd spikes.
         """
         if genre_focus:
             self.genre_focus = genre_focus.lower()
 
-        if not analyzed_segments:
-            logger.warning("No analyzed segments provided to ClipSelector.")
-            return []
-
         candidates = []
+        if extra_candidates:
+            for ec in extra_candidates:
+                ec_copy = dict(ec)
+                if not ec_copy.get("radar"):
+                    ec_copy["radar"] = {
+                        "Acoustic Peak": min(100, int(ec_copy.get("audio_score", 90.0))),
+                        "Speech Velocity": 75,
+                        "Hook Potency": 85,
+                        "Viral Resonance": min(100, int(ec_copy.get("viral_score", 90.0)))
+                    }
+                candidates.append(ec_copy)
+
+        if not analyzed_segments and not candidates:
+            logger.warning("No analyzed segments or peaks provided to ClipSelector.")
+            return []
         n_segs = len(analyzed_segments)
 
         for i in range(n_segs):
