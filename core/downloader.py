@@ -79,6 +79,17 @@ class VideoDownloader:
         opts["live_from_start"] = True
         opts["hls_prefer_native"] = True
 
+        # Connection resilience and anti-throttling options
+        # Prevents ConnectionResetError (10054) and YouTube CDN TCP disconnects
+        opts.setdefault("retries", 15)
+        opts.setdefault("fragment_retries", 15)
+        opts.setdefault("skip_unavailable_fragments", True)
+        opts.setdefault("socket_timeout", 30)
+        opts.setdefault("http_chunk_size", 10485760)  # 10MB chunking prevents CDN resets
+        opts.setdefault("concurrent_fragment_downloads", 2)
+        opts.setdefault("file_access_retries", 5)
+        opts.setdefault("continuedl", True)  # Resume partial downloads
+
         # Apply cookies file if available
         if self.cookies_file and os.path.exists(self.cookies_file):
             opts["cookiefile"] = str(self.cookies_file)
@@ -87,10 +98,11 @@ class VideoDownloader:
             opts["cookiesfrombrowser"] = (self.cookies_from_browser,)
             logger.info(f"Using cookies from browser: {self.cookies_from_browser}")
         else:
-            # Fallback player client sequence when unauthenticated
+            # Fallback player client sequence when unauthenticated: prefer web and mweb to avoid android throttle
             opts["extractor_args"] = {
                 "youtube": {
-                    "player_client": ["android", "web"]
+                    "player_client": ["web", "mweb", "android"],
+                    "player_skip": ["configs", "webpage"]
                 },
                 "twitch": {
                     "disable_ads": True
@@ -340,9 +352,23 @@ class VideoDownloader:
         if progress_hook:
             ydl_opts["progress_hooks"] = [progress_hook]
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            # If a search query was used (e.g. ytsearch1:...), unwrap the entries
+        info = None
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+        except Exception as e:
+            logger.warning(f"Primary download attempt encountered network issue ({e}). Retrying with resilient progressive stream...")
+            fallback_opts = ydl_opts.copy()
+            # Fallback to single stream MP4 (up to 1080p) to avoid multi-stream socket resets
+            fallback_opts["format"] = "best[height<=1080][ext=mp4]/best[height<=1080]/best[ext=mp4]/best"
+            fallback_opts["http_chunk_size"] = 5242880  # 5MB chunks
+            fallback_opts["retries"] = 25
+            fallback_opts["fragment_retries"] = 25
+            fallback_opts["continuedl"] = True
+            with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+
+        # If a search query was used (e.g. ytsearch1:...), unwrap the entries
             if info and "entries" in info:
                 entries = [e for e in info.get("entries", []) if e]
                 if entries:

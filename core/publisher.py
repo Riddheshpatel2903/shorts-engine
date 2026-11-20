@@ -23,6 +23,37 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 PROFILES_DIR = Path(WORKSPACE_DIR) / "browser_profile"
 SETTINGS_FILE = Path(WORKSPACE_DIR) / "social_settings.json"
 
+STEALTH_SCRIPT = """
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+    const getParameter = WebGLRenderingContext.prototype.getParameter;
+    WebGLRenderingContext.prototype.getParameter = function(parameter) {
+        if (parameter === 37445) return 'Google Inc. (NVIDIA)';
+        if (parameter === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce RTX, OpenGL 4.5)';
+        return getParameter.apply(this, arguments);
+    };
+"""
+
+
+def get_installed_browser_channel() -> Optional[str]:
+    """Finds installed Google Chrome or Microsoft Edge on Windows."""
+    for p in [
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+    ]:
+        if Path(p).exists():
+            return "chrome"
+
+    for p in [
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"
+    ]:
+        if Path(p).exists():
+            return "msedge"
+
+    return None
+
 
 class PlaywrightPublisher:
     """Automates publishing to YouTube Shorts and Instagram Reels via persistent browser sessions."""
@@ -161,14 +192,30 @@ class PlaywrightPublisher:
         logger.info(f"Starting automated YouTube upload for: {vid_file.name}")
 
         try:
-            with sync_playwright() as p:
-                context = p.chromium.launch_persistent_context(
-                    user_data_dir=str(profile_dir),
-                    headless=True,
-                    viewport={"width": 1280, "height": 800},
-                    args=["--disable-blink-features=AutomationControlled"]
+            channel = get_installed_browser_channel()
+            launch_kwargs = {
+                "user_data_dir": str(profile_dir),
+                "headless": True,
+                "viewport": {"width": 1280, "height": 800},
+                "ignore_default_args": ["--enable-automation"],
+                "args": [
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-infobars"
+                ],
+                "user_agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/131.0.0.0 Safari/537.36"
                 )
-                page = context.new_page()
+            }
+            if channel:
+                launch_kwargs["channel"] = channel
+
+            with sync_playwright() as p:
+                context = p.chromium.launch_persistent_context(**launch_kwargs)
+                context.add_init_script(STEALTH_SCRIPT)
+                page = context.pages[0] if context.pages else context.new_page()
                 page.goto("https://studio.youtube.com", timeout=60000)
                 page.wait_for_load_state("networkidle")
 
@@ -285,16 +332,41 @@ class PlaywrightPublisher:
         logger.info(f"Starting automated Instagram Reel upload for: {vid_file.name}")
 
         try:
-            with sync_playwright() as p:
-                context = p.chromium.launch_persistent_context(
-                    user_data_dir=str(profile_dir),
-                    headless=True,
-                    viewport={"width": 1280, "height": 800},
-                    args=["--disable-blink-features=AutomationControlled"]
+            channel = get_installed_browser_channel()
+            launch_kwargs = {
+                "user_data_dir": str(profile_dir),
+                "headless": False,  # Visible browser ensures Instagram video encoder and modal render without crashing
+                "viewport": {"width": 1280, "height": 800},
+                "ignore_default_args": ["--enable-automation"],
+                "args": [
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-infobars"
+                ],
+                "user_agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/131.0.0.0 Safari/537.36"
                 )
-                page = context.new_page()
+            }
+            if channel:
+                launch_kwargs["channel"] = channel
+
+            with sync_playwright() as p:
+                context = p.chromium.launch_persistent_context(**launch_kwargs)
+                context.add_init_script(STEALTH_SCRIPT)
+                page = context.pages[0] if context.pages else context.new_page()
                 page.goto("https://www.instagram.com/", timeout=60000)
                 page.wait_for_load_state("networkidle")
+
+                # Dismiss any 'Save login info' or 'Turn on notifications' popups if present
+                for dismiss_text in ["Not Now", "Cancel"]:
+                    try:
+                        d_btn = page.locator(f"button:has-text('{dismiss_text}')").first
+                        if d_btn.is_visible(timeout=2000):
+                            d_btn.click()
+                    except Exception:
+                        pass
 
                 # Verify if logged in
                 if "accounts/login" in page.url:

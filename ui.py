@@ -273,7 +273,7 @@ with st.sidebar:
             if yt_priv != social_status.get("youtube_privacy"):
                 publisher.update_settings(youtube_privacy=yt_priv)
 
-        st.caption("💡 Click 'Open YouTube Login Window', sign in to Google/YouTube Studio, then close the browser window.")
+        st.caption("💡 Click 'Open YouTube Login Window', sign into your Google / YouTube Studio channel, then close the browser.")
 
         st.divider()
 
@@ -286,7 +286,7 @@ with st.sidebar:
             res = publisher.open_login_browser("instagram")
             st.info(res.get("message", "Browser window opened."))
 
-        st.caption("💡 Click 'Open Instagram Login Window', log into your Instagram account, then close the browser window.")
+        st.caption("💡 Opens genuine Chrome with anti-bot stealth enabled. Sign in once to save cookies. If Instagram sends a 2FA code or security check, enter it in the opened window.")
 
         st.divider()
 
@@ -404,18 +404,41 @@ if st.session_state.nav_tab == "Clip Studio":
                         source_url_target = meta
                 else:
                     with st.spinner("Downloading stream metadata and extracting audio..."):
-                        meta = downloader.download(url_val.strip())
-                        source_input_path = meta["filepath"]
-                        source_url_target = meta
+                        try:
+                            meta = downloader.download(url_val.strip())
+                            source_input_path = meta["filepath"]
+                            source_url_target = meta
+                        except Exception as e:
+                            st.error(f"Download issue: {e}\n\n💡 Tip: For live streams or recent live broadcasts, select '⚡ Fast Rolling Fragment Capture' above to snatch clips instantly without waiting!")
 
         with c_in_type2:
-            up_file = st.file_uploader("Select recording (.mp4, .mov, .mkv):", type=["mp4", "mov", "mkv"])
-            if up_file and st.button("Analyze Uploaded File", type="primary"):
-                save_loc = DOWNLOADS_DIR / up_file.name
-                with open(save_loc, "wb") as f:
-                    f.write(up_file.getbuffer())
-                source_input_path = str(save_loc)
-                source_url_target = {"id": up_file.name, "title": up_file.name, "filepath": str(save_loc)}
+            st.caption("Upload video files up to 4GB, or paste a local path for instant 0-second loading on massive files (e.g. 50GB OBS recordings).")
+            up_file = st.file_uploader("Select recording (.mp4, .mov, .mkv - Up to 4GB):", type=["mp4", "mov", "mkv"])
+            if up_file:
+                file_mb = round(len(up_file.getvalue()) / (1024 * 1024), 1) if hasattr(up_file, "getvalue") else 0
+                st.caption(f"📁 Selected: `{up_file.name}` ({file_mb} MB)")
+                if st.button("Analyze Uploaded File", type="primary", use_container_width=True):
+                    save_loc = DOWNLOADS_DIR / up_file.name
+                    with open(save_loc, "wb") as f:
+                        f.write(up_file.getbuffer())
+                    source_input_path = str(save_loc)
+                    source_url_target = {"id": up_file.name, "title": up_file.name, "filepath": str(save_loc)}
+
+            st.markdown("---")
+            local_path_input = st.text_input(
+                "📁 Or Enter Local Video Path (Instant 0s Load, any size e.g. 10GB+):",
+                placeholder=r"e.g. C:\Users\patel\Videos\gameplay_recording.mp4",
+                help="Directly loads local video files without browser upload delays or memory buffering."
+            )
+            if local_path_input and local_path_input.strip():
+                clean_p = Path(local_path_input.strip().strip('"').strip("'"))
+                if st.button("Load Local Video File", key="btn_load_local_file", use_container_width=True):
+                    if clean_p.exists() and clean_p.is_file():
+                        source_input_path = str(clean_p.resolve())
+                        source_url_target = {"id": clean_p.stem, "title": clean_p.stem, "filepath": str(clean_p.resolve())}
+                        st.success(f"Loaded `{clean_p.name}` directly from disk!")
+                    else:
+                        st.error(f"File not found: {clean_p}")
 
         # Perform analysis if path resolved
         if source_input_path:
