@@ -46,6 +46,8 @@ from core.clip_story_engine import clip_story_engine
 from core.autoclip_precision import autoclip_aligner, autoclip_cutter
 from core.chat_analyzer import chat_analyzer
 
+face_detector = FaceDetector()
+
 # Page Configuration
 st.set_page_config(
     page_title="ViralShorts Pro Studio",
@@ -544,12 +546,48 @@ if st.session_state.nav_tab == "Clip Studio":
             style_preset = st.selectbox("Subtitle Motion Preset:", options=list(SUBTITLE_PRESETS.keys()), format_func=lambda k: SUBTITLE_PRESETS[k]["name"])
 
         with col_rev_right:
-            st.markdown("##### Composition Settings")
+            st.markdown("##### Composition & Framing Settings")
+
+            # Pinpoint clip framing analysis: checks whether a person is in frame, looking at camera, or pure gameplay
+            clip_framing = face_detector.analyze_clip_framing(data["source_path"], start_val, clip_len)
+            rec_mode = clip_framing.get("recommended_layout", "FULL_VERTICAL_STRIP")
+
+            layout_options = [
+                "AUTO",
+                "FULL_VERTICAL_STRIP",
+                "CINEMATIC_BLUR",
+                "STREAMER_SPLIT",
+                "PODCAST_SPLIT"
+            ]
+
+            layout_format = {
+                "AUTO": f"🤖 Auto-Adaptive ({rec_mode})",
+                "FULL_VERTICAL_STRIP": "📱 Full Vertical Strip (Person / Action Centered 9:16)",
+                "CINEMATIC_BLUR": "🎬 Cinematic 16:9 (Full View + Blurred Backdrop)",
+                "STREAMER_SPLIT": "✂️ Dual Split-Screen (Facecam Top + Gameplay Bottom)",
+                "PODCAST_SPLIT": "🎙️ Podcast Split (Host Top / Guest Bottom)"
+            }
+
             comp_mode = st.selectbox(
                 "Vertical 9:16 Canvas Layout:",
-                options=["AUTO", "STREAMER_SPLIT", "TALKING_HEAD", "CINEMATIC_BLUR"],
-                format_func=lambda x: "Auto (Facecam Top + Gameplay Bottom)" if x in ["AUTO", "STREAMER_SPLIT"] and layout_cls == "STREAMER_FACECAM" else x
+                options=layout_options,
+                format_func=lambda x: layout_format.get(x, x),
+                index=0,
+                help="Choose layout as needed: Full Vertical Strip (no horizontal split cuts), Cinematic Blurred 16:9, or Dual Split."
             )
+
+            # Visual Subject & Gaze Direction Indicator
+            if clip_framing.get("person_in_frame"):
+                if clip_framing.get("person_looking_in_frame"):
+                    p_badge = "🟢 Person Looking in Frame"
+                else:
+                    p_badge = "🟡 Person in Frame (Angled / Away)"
+                cx_val = clip_framing.get("tracked_person_cx", 960)
+                st.caption(f"**Visual Subject:** {p_badge} | Tracked Center: `X={cx_val}px`")
+            else:
+                st.caption("**Visual Subject:** 🎮 Pure Gameplay / No Person in Frame (Action Centered)")
+
+            st.caption(f"💡 **Framing Note:** {clip_framing.get('reason', '')}")
 
             # Confirmation & Approval Button
             st.write("")
@@ -584,10 +622,13 @@ if st.session_state.nav_tab == "Clip Studio":
                         style_preset=style_preset
                     )
 
+                    # Merge pinpoint clip framing into layout info so the editor tracks the person accurately
+                    active_layout = {**analysis["layout"], **clip_framing}
+
                     out_path = exporter.render_clip(
                         source_path=data["source_path"],
                         clip_info=clip_info,
-                        layout_info=analysis["layout"],
+                        layout_info=active_layout,
                         subtitle_path=ass_path if clip_words else None,
                         output_filename=out_fname,
                         template=comp_mode

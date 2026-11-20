@@ -85,12 +85,17 @@ class VideoEditor:
         # Resolve template if AUTO
         mode = template.upper()
         if mode == "AUTO":
-            if classification == "PODCAST" or podcast_speakers:
+            recommended = layout_info.get("recommended_layout")
+            if recommended and recommended.upper() in ("FULL_VERTICAL_STRIP", "STREAMER_SPLIT", "PODCAST_SPLIT", "CINEMATIC_BLUR"):
+                mode = recommended.upper()
+            elif src_h >= src_w:
+                mode = "FULL_VERTICAL_STRIP"
+            elif classification == "PODCAST" or podcast_speakers:
                 mode = "PODCAST_SPLIT"
             elif classification == "STREAMER_FACECAM" and facecam_box:
                 mode = "STREAMER_SPLIT"
-            elif classification == "TALKING_HEAD":
-                mode = "TALKING_HEAD"
+            elif classification == "TALKING_HEAD" or layout_info.get("person_in_frame"):
+                mode = "FULL_VERTICAL_STRIP"
             else:
                 mode = "CINEMATIC_BLUR"
 
@@ -159,26 +164,41 @@ class VideoEditor:
             filters.extend([bg_filter, face_filter, game_filter, overlay_filter])
             current_v = "[framed]"
 
-        elif mode == "TALKING_HEAD":
-            # Layout: Single Person Centered 9:16 Crop
-            spk_center = layout_info.get("speaker_center")
-            if isinstance(spk_center, dict):
-                speaker_cx = spk_center.get("x", src_w // 2)
-            elif isinstance(spk_center, (list, tuple)) and len(spk_center) > 0:
-                speaker_cx = spk_center[0]
+        elif mode in ("FULL_VERTICAL_STRIP", "SMART_VERTICAL_CROP", "TALKING_HEAD"):
+            # Layout: Full 9:16 vertical strip (1080x1920) without split-screen
+            # Precisely tracks person looking in frame (head + body centered), or centers action if pure gameplay
+            if src_h >= src_w:
+                # Video is already vertical (e.g. mobile recording / Reels)
+                strip_filter = (
+                    f"[0:v]scale={self.width}:{self.height}:force_original_aspect_ratio=increase,"
+                    f"crop={self.width}:{self.height}[framed]"
+                )
             else:
-                speaker_cx = src_w // 2
+                # 16:9 widescreen source
+                target_ratio = self.width / self.height  # 1080 / 1920 = 0.5625
+                crop_w = int(src_h * target_ratio)
+                crop_w = crop_w - (crop_w % 2)  # ensure even
+                crop_h = src_h
 
-            scale_factor = self.height / max(1, src_h)
-            scaled_w = int(src_w * scale_factor)
-            scaled_cx = int(speaker_cx * scale_factor)
-            crop_x = max(0, min(scaled_w - self.width, scaled_cx - (self.width // 2)))
+                # Determine horizontal center (person cx or action center)
+                person_cx = (
+                    layout_info.get("tracked_person_cx") or
+                    layout_info.get("person_cx") or
+                    (layout_info.get("speaker_center", [src_w // 2])[0] if isinstance(layout_info.get("speaker_center"), (list, tuple)) else None) or
+                    (layout_info.get("speaker_center", {}).get("x") if isinstance(layout_info.get("speaker_center"), dict) else None) or
+                    (src_w // 2)
+                )
 
-            head_filter = (
-                f"[0:v]scale=-1:{self.height},"
-                f"crop={self.width}:{self.height}:{crop_x}:0[framed]"
-            )
-            filters.append(head_filter)
+                crop_x = int(person_cx - crop_w / 2)
+                crop_x = max(0, min(src_w - crop_w, crop_x))
+                crop_x = crop_x - (crop_x % 2)
+
+                strip_filter = (
+                    f"[0:v]crop={crop_w}:{crop_h}:{crop_x}:0,"
+                    f"scale={self.width}:{self.height}:flags=lanczos[framed]"
+                )
+
+            filters.append(strip_filter)
             current_v = "[framed]"
 
         elif mode == "FIT_LETTERBOX":
