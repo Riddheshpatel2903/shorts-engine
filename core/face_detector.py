@@ -351,9 +351,14 @@ class FaceDetector:
         avg_h = active_speaker["avg_h"]
         person_looking = active_speaker["looking_ratio"] >= 0.35
 
-        is_corner_x = (active_speaker_cx < width * 0.35) or (active_speaker_cx > width * 0.65)
-        is_small = avg_w < (width * 0.35)
-        is_corner_facecam = is_corner_x and is_small
+        # True corner facecam detection:
+        # A gaming webcam overlay MUST be in an extreme corner (top-left, top-right, bottom-left, bottom-right)
+        # AND occupy a small footprint (< 22% of screen width).
+        # Any person framed anywhere else (even off-center in rule-of-thirds) is a primary subject, NOT a webcam!
+        is_extreme_x = (active_speaker_cx < width * 0.22) or (active_speaker_cx > width * 0.78)
+        is_extreme_y = (active_speaker_cy < height * 0.32) or (active_speaker_cy > height * 0.68)
+        is_tiny_box = (avg_w < width * 0.22) and (avg_h < height * 0.25)
+        is_corner_facecam = is_extreme_x and is_extreme_y and is_tiny_box
 
         # PRECISE CENTERING: Center the speaking person exactly in the 9:16 frame!
         crop_x = int(active_speaker_cx - crop_w / 2)
@@ -577,34 +582,27 @@ class FaceDetector:
         avg_w = sum(w for (x, y, w, h) in all_faces) / len(all_faces)
         avg_h = sum(h for (x, y, w, h) in all_faces) / len(all_faces)
 
-        # Check ANY Corner: Top-Left, Top-Right, Bottom-Left, Bottom-Right, Bottom-Center
-        is_left = avg_cx < width * 0.38
-        is_right = avg_cx > width * 0.62
-        is_top = avg_cy < height * 0.48
-        is_bottom = avg_cy > height * 0.52
-        is_small_box = (avg_w < width * 0.38) and (avg_h < height * 0.45)
+        # Check for genuine corner webcam overlays (Top-Left, Top-Right, Bottom-Left, Bottom-Right)
+        # Must be in an extreme corner (X < 22% or > 78%, Y < 32% or > 68%) and small in area
+        is_extreme_left = avg_cx < width * 0.22
+        is_extreme_right = avg_cx > width * 0.78
+        is_extreme_top = avg_cy < height * 0.32
+        is_extreme_bottom = avg_cy > height * 0.68
+        is_small_box = (avg_w < width * 0.22) and (avg_h < height * 0.25)
 
         quadrant = "CENTER"
-        if is_top and is_left:
+        if is_extreme_top and is_extreme_left:
             quadrant = "TOP_LEFT"
-        elif is_top and is_right:
+        elif is_extreme_top and is_extreme_right:
             quadrant = "TOP_RIGHT"
-        elif is_bottom and is_left:
+        elif is_extreme_bottom and is_extreme_left:
             quadrant = "BOTTOM_LEFT"
-        elif is_bottom and is_right:
+        elif is_extreme_bottom and is_extreme_right:
             quadrant = "BOTTOM_RIGHT"
-        elif is_bottom:
-            quadrant = "BOTTOM_CENTER"
-        elif is_left:
-            quadrant = "LEFT_SIDE"
-        elif is_right:
-            quadrant = "RIGHT_SIDE"
-        elif is_top:
-            quadrant = "TOP_CENTER"
 
-        is_corner = (is_left or is_right or (is_bottom and is_small_box))
+        is_true_corner = (is_extreme_left or is_extreme_right) and (is_extreme_top or is_extreme_bottom)
 
-        if is_corner and is_small_box and face_ratio >= 0.35:
+        if is_true_corner and is_small_box and face_ratio >= 0.35:
             logger.info(f"Classified source as STREAMER_FACECAM in {quadrant} corner.")
             pad_w = int(avg_w * 1.0)
             pad_h = int(avg_h * 1.1)

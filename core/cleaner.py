@@ -177,6 +177,93 @@ class WorkspaceCleaner:
             logger.warning(f"Failed to delete {file_path}: {e}")
         return False
 
+    def list_generated_deliverables(self) -> List[Dict[str, Any]]:
+        """
+        Lists all finished, exported MP4 videos from output_dir with file details,
+        size in MB, modification time, and categorization (Short vs Long Video).
+        """
+        deliverables = []
+        if not self.output_dir.exists():
+            return deliverables
+
+        try:
+            for f in self.output_dir.iterdir():
+                if f.is_file() and f.suffix.lower() == ".mp4":
+                    stat = f.stat()
+                    sz_mb = round(stat.st_size / (1024 * 1024), 2)
+                    is_long = "long" in f.name.lower() or "compilation" in f.name.lower() or "highlight" in f.name.lower()
+                    
+                    # Check for cover image thumbnail
+                    cover_cand = f.with_suffix(".jpg")
+                    cover_png = f.with_suffix(".png")
+                    cover_path = str(cover_cand) if cover_cand.exists() else (str(cover_png) if cover_png.exists() else None)
+
+                    deliverables.append({
+                        "name": f.name,
+                        "path": str(f),
+                        "size_mb": sz_mb,
+                        "mtime": stat.st_mtime,
+                        "is_long_video": is_long,
+                        "category": "🎞️ Long Format Video" if is_long else "🎬 Viral Short (9:16)",
+                        "cover_path": cover_path
+                    })
+        except Exception as e:
+            logger.warning(f"Error listing deliverables: {e}")
+
+        # Sort by most recently generated first
+        deliverables.sort(key=lambda x: x["mtime"], reverse=True)
+        return deliverables
+
+    def delete_single_deliverable(self, video_path: str) -> bool:
+        """
+        Deletes a specific generated video and its associated thumbnail preview.
+        """
+        try:
+            p = Path(video_path)
+            if p.exists() and p.is_file():
+                p.unlink()
+                # Also delete associated thumbnail cover if present
+                for thumb_ext in [".jpg", ".png", ".jpeg"]:
+                    thumb = p.with_suffix(thumb_ext)
+                    if thumb.exists():
+                        try:
+                            thumb.unlink()
+                        except Exception:
+                            pass
+                logger.info(f"Deleted deliverable: {p.name}")
+                return True
+        except Exception as e:
+            logger.error(f"Failed to delete deliverable {video_path}: {e}")
+        return False
+
+    def auto_purge_temp_cache(self, max_age_hours: float = 1.0) -> int:
+        """
+        Silent auto-cleaner: automatically purges temporary audio chunks, .ass files,
+        and .part fragments older than max_age_hours or on startup to keep disk light.
+        """
+        purged = 0
+        if not self.processing_dir.exists():
+            return 0
+
+        import time
+        now = time.time()
+        cutoff = now - (max_age_hours * 3600)
+
+        try:
+            for f in self.processing_dir.iterdir():
+                if f.is_file():
+                    # Purge temporary files
+                    if f.suffix.lower() in [".wav", ".ass", ".tmp", ".ts", ".part"] or f.stat().st_mtime < cutoff:
+                        try:
+                            f.unlink()
+                            purged += 1
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+        return purged
+
 
 # Singleton instance
 workspace_cleaner = WorkspaceCleaner()

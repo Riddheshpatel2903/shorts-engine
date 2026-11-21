@@ -28,7 +28,7 @@ class AutoClipPrecisionAligner:
     word boundaries, punctuation, and speech pauses.
     """
 
-    def __init__(self, pre_roll_pad: float = 0.12, post_roll_pad: float = 0.25):
+    def __init__(self, pre_roll_pad: float = 0.15, post_roll_pad: float = 0.85):
         self.pre_roll = pre_roll_pad
         self.post_roll = post_roll_pad
 
@@ -77,19 +77,25 @@ class AutoClipPrecisionAligner:
         raw_start: float,
         raw_end: float,
         max_duration: float = 60.0,
-        min_duration: float = 15.0
+        min_duration: float = 15.0,
+        post_roll_override: Optional[float] = None,
+        is_comedy_or_reaction: bool = False
     ) -> Dict[str, Any]:
         """
         Snaps raw timestamps to complete linguistic clauses:
         - Finds word closest to raw_start and snaps to start of word or sentence beginning.
         - Finds sentence ending (. ! ?) near raw_end so speech never terminates abruptly.
-        - Applies natural acoustic pre-roll and post-roll decay buffers.
+        - Automatically detects punchlines, comedy, laughter, and reaction spikes, applying
+          a generous post-roll reaction decay buffer (1.5s - 2.2s) so punchlines and laughing
+          are never cut off mid-chuckle.
         """
         all_words = self.get_all_words_with_timing(transcript)
+        effective_post_roll = post_roll_override if post_roll_override is not None else self.post_roll
+
         if not all_words:
             # Fallback if transcript has no words
             snapped_s = max(0.0, raw_start - self.pre_roll)
-            snapped_e = raw_end + self.post_roll
+            snapped_e = raw_end + (effective_post_roll if not is_comedy_or_reaction else max(1.8, effective_post_roll))
             return {
                 "start": round(snapped_s, 2),
                 "end": round(snapped_e, 2),
@@ -102,7 +108,6 @@ class AutoClipPrecisionAligner:
             }
 
         # 1. Snap Start: Find the first word that starts at or near raw_start
-        # Look within a 2.0s search window
         candidate_start_idx = 0
         min_start_diff = float("inf")
         for idx, w in enumerate(all_words):
@@ -112,12 +117,9 @@ class AutoClipPrecisionAligner:
                 candidate_start_idx = idx
 
         # Step backwards if the immediately preceding word was a sentence start or after a long pause
-        # (check if preceding word ended with punctuation or had > 0.4s silence)
         start_idx = candidate_start_idx
         if start_idx > 0:
             prev_w = all_words[start_idx - 1]
-            pause = all_words[start_idx]["start"] - prev_w["end"]
-            # If candidate was in middle of short phrase, try to find sentence start within 3 words
             for back_step in range(1, min(4, start_idx + 1)):
                 test_prev = all_words[start_idx - back_step]
                 if test_prev["word"].endswith((".", "!", "?")) or (all_words[start_idx - back_step + 1]["start"] - test_prev["end"]) > 0.35:
@@ -137,10 +139,10 @@ class AutoClipPrecisionAligner:
                 min_end_diff = diff
                 candidate_end_idx = idx
 
-        # Look forward or backward up to 6 words to find a clean punctuation (. ! ? ,) or pause > 0.3s
+        # Look forward or backward up to 7 words to find a clean punctuation (. ! ? ,) or pause > 0.3s
         end_idx = candidate_end_idx
         found_clean_end = False
-        search_range = range(max(start_idx + 3, candidate_end_idx - 4), min(len(all_words), candidate_end_idx + 6))
+        search_range = range(max(start_idx + 3, candidate_end_idx - 5), min(len(all_words), candidate_end_idx + 7))
         for check_idx in search_range:
             w = all_words[check_idx]
             is_punct = any(w["word"].endswith(p) for p in [".", "!", "?", '."', '!"', '?"'])
@@ -157,11 +159,27 @@ class AutoClipPrecisionAligner:
                 if is_punct:
                     break
 
-        snapped_end_time = all_words[end_idx]["end"] + self.post_roll
+        # Check for comedy / punchline cues near the end of the segment
+        chosen_words = all_words[start_idx : end_idx + 1]
+        tail_words = " ".join(w["word"].lower() for w in chosen_words[-6:])
+        
+        has_comedy_cues = is_comedy_or_reaction or any(
+            cue in tail_words for cue in [
+                "haha", "hehe", "lmao", "lol", "laugh", "funny", "kya", "bhai",
+                "joke", "dead", "died", "rofl", "crazy", "scream", "bruh", "omg",
+                "patt se", "op bolte", "pel diya", "gaya"
+            ]
+        ) or any(w["word"].endswith("!") for w in chosen_words[-2:])
+
+        if has_comedy_cues:
+            # Add extra post-roll decay buffer so laughter and reactions are not clipped
+            extra_pad = 1.8 if post_roll_override is None else post_roll_override
+            effective_post_roll = max(effective_post_roll, extra_pad)
+
+        snapped_end_time = all_words[end_idx]["end"] + effective_post_roll
         final_duration = snapped_end_time - snapped_start_time
 
         # Extract words and clean text
-        chosen_words = all_words[start_idx : end_idx + 1]
         full_text = " ".join(w["word"] for w in chosen_words)
         hook_text = " ".join(w["word"] for w in chosen_words[:6]).upper()
 
@@ -173,6 +191,7 @@ class AutoClipPrecisionAligner:
             "hook_text": hook_text[:40],
             "clean_text": full_text,
             "is_sentence_boundary": found_clean_end,
+            "is_comedy_or_reaction": has_comedy_cues,
             "confidence": 0.95 if found_clean_end else 0.82
         }
 

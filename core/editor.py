@@ -199,29 +199,46 @@ class VideoEditor:
             else:
                 # 16:9 widescreen source
                 target_ratio = self.width / self.height  # 1080 / 1920 = 0.5625
-                crop_w = int(src_h * target_ratio)
-                crop_w = crop_w - (crop_w % 2)  # ensure even
-                crop_h = src_h
+                zoom_factor = min(1.3, max(1.0, float(layout_info.get("zoom_factor", 1.0))))
+                
+                crop_h = int(src_h / zoom_factor)
+                crop_w = int(crop_h * target_ratio)
+                crop_w = crop_w - (crop_w % 2)
+                crop_h = crop_h - (crop_h % 2)
 
                 # Determine horizontal center (dynamic active-speaker switching expression or static coordinate)
                 dynamic_x = layout_info.get("crop_x_expr")
+                person_cx = (
+                    layout_info.get("tracked_person_cx") or
+                    layout_info.get("person_cx") or
+                    (layout_info.get("speaker_center", [src_w // 2])[0] if isinstance(layout_info.get("speaker_center"), (list, tuple)) else None) or
+                    (layout_info.get("speaker_center", {}).get("x") if isinstance(layout_info.get("speaker_center"), dict) else None) or
+                    (src_w // 2)
+                )
+                
+                person_cy = (
+                    layout_info.get("tracked_person_cy") or
+                    (layout_info.get("speaker_center", [0, src_h // 2])[1] if isinstance(layout_info.get("speaker_center"), (list, tuple)) and len(layout_info.get("speaker_center")) > 1 else None) or
+                    (layout_info.get("speaker_center", {}).get("y") if isinstance(layout_info.get("speaker_center"), dict) else None) or
+                    int(src_h * 0.40)
+                )
+
                 if dynamic_x and any(op in str(dynamic_x) for op in ("lt", "gt", "if", "t")):
                     x_target = f"'{dynamic_x}'"
                 else:
-                    person_cx = (
-                        layout_info.get("tracked_person_cx") or
-                        layout_info.get("person_cx") or
-                        (layout_info.get("speaker_center", [src_w // 2])[0] if isinstance(layout_info.get("speaker_center"), (list, tuple)) else None) or
-                        (layout_info.get("speaker_center", {}).get("x") if isinstance(layout_info.get("speaker_center"), dict) else None) or
-                        (src_w // 2)
-                    )
                     crop_x = int(person_cx - crop_w / 2)
                     crop_x = max(0, min(src_w - crop_w, crop_x))
                     crop_x = crop_x - (crop_x % 2)
                     x_target = str(crop_x)
 
+                # Smart vertical headroom: place face at 30-35% from top of 9:16 frame
+                ideal_y = int(person_cy - crop_h * 0.33)
+                crop_y = max(0, min(src_h - crop_h, ideal_y))
+                crop_y = crop_y - (crop_y % 2)
+                y_target = str(crop_y)
+
                 strip_filter = (
-                    f"[0:v]crop={crop_w}:{crop_h}:{x_target}:0,"
+                    f"[0:v]crop={crop_w}:{crop_h}:{x_target}:{y_target},"
                     f"scale={self.width}:{self.height}:flags=lanczos[framed]"
                 )
 

@@ -1,10 +1,9 @@
 """
 ViralShorts Pro - Multi-Modal AI Video Studio.
-Professional 4-Tab Architecture:
-1. Clip Studio: Link/Upload -> Deep Analysis -> Manual Trim & Framing Review -> User Approval -> Render & Video Player
-2. Daily Feeds & Scripts: Multi-Category Live Feeds (Memes, Social Media, Gaming, News, Sports) -> Checklist -> AI Script Engine -> 1-Click Video Render & Player
-3. Script to Vector Video: Script to Vector Video with OmniVoice TTS, Motion Graphics & Visuals -> Render & Video Player
-4. Exports & Video Library: Comprehensive media library displaying all rendered 1080x1920 MP4s with playback, download & social publishing
+Professional 3-Section Architecture:
+1. 🎬 Viral Shorts Studio: Link / File -> Intelligent Highlight & Reaction Discovery -> Facecam & Speaker Tracking Framing -> Approval -> 9:16 Short Render & 1-Click Social Publish
+2. 🎞️ Long Video Generator: Link / File -> Discover Stream & Podcast Highlight Chapters -> Interactive Chapter Selection & Titles -> Merged 16:9 Long Video with Transitions, Chapter Lower-Thirds & Normalized Audio -> YouTube Publishing with Clickable Timestamps
+3. 📁 Video Library & Storage: Unified Gallery for all Shorts & Long Videos, Single-Click Deletion for Unwanted Clips, Automated Background Memory Purge, and Disk Space Telemetry
 """
 
 import sys
@@ -38,15 +37,18 @@ from core.subtitles import SubtitleGenerator, SUBTITLE_PRESETS
 from core.exporter import VideoExporter
 from core.ai_brain import ai_brain
 from core.cleaner import workspace_cleaner
-from core.feed_manager import feed_manager
-from core.tts_engine import tts_engine
-from core.vector_video import vector_video_engine
 from core.publisher import publisher
-from core.clip_story_engine import clip_story_engine
 from core.autoclip_precision import autoclip_aligner, autoclip_cutter
 from core.chat_analyzer import chat_analyzer
+from core.long_video_generator import long_video_generator
 
 face_detector = FaceDetector()
+
+# Automatic memory cleaner on startup/turn: silently purge temporary audio and .ass fragments
+try:
+    workspace_cleaner.auto_purge_temp_cache(max_age_hours=0.5)
+except Exception:
+    pass
 
 # Page Configuration
 st.set_page_config(
@@ -99,7 +101,7 @@ def render_video_player(video_path: Path, key_prefix: str = "") -> bool:
             video_bytes = vf.read()
         st.video(video_bytes, format="video/mp4")
         st.download_button(
-            label=f"Download {video_path.name}",
+            label=f"⬇️ Download {video_path.name}",
             data=video_bytes,
             file_name=video_path.name,
             mime="video/mp4",
@@ -121,12 +123,12 @@ def render_publish_status_banner():
         ig = msg.get("instagram")
         if yt and isinstance(yt, dict):
             if yt.get("success"):
-                st.success(f"🚀 Auto-Published to YouTube Shorts: [{yt.get('url')}]({yt.get('url')})")
+                st.success(f"🚀 Published to YouTube Shorts: [{yt.get('url')}]({yt.get('url')})")
             elif yt.get("error"):
                 st.info(f"YouTube Upload Note: {yt.get('error')}")
         if ig and isinstance(ig, dict):
             if ig.get("success"):
-                st.success(f"🚀 Auto-Published to Instagram Reels: [{ig.get('url')}]({ig.get('url')})")
+                st.success(f"🚀 Published to Instagram Reels: [{ig.get('url')}]({ig.get('url')})")
             elif ig.get("error"):
                 st.info(f"Instagram Upload Note: {ig.get('error')}")
 
@@ -171,18 +173,7 @@ st.markdown("""
     .badge-blue { background: #1e293b; color: #38bdf8; border: 1px solid #0284c744; }
     .badge-green { background: #064e3b; color: #34d399; border: 1px solid #05966944; }
     .badge-amber { background: #451a03; color: #fbbf24; border: 1px solid #d9770644; }
-    
-    /* Code & Copy Blocks */
-    .pro-code-box {
-        background: #090b10;
-        border: 1px solid #1c2230;
-        border-radius: 6px;
-        padding: 10px 14px;
-        font-family: monospace;
-        font-size: 0.82rem;
-        color: #cbd5e1;
-        margin: 6px 0;
-    }
+    .badge-purple { background: #3b0764; color: #c084fc; border: 1px solid #a855f744; }
     
     /* Sidebar Navigation */
     section[data-testid="stSidebar"] {
@@ -194,31 +185,25 @@ st.markdown("""
 
 # State initialization
 if "nav_tab" not in st.session_state:
-    st.session_state.nav_tab = "Clip Studio"
+    st.session_state.nav_tab = "🎬 Viral Shorts Studio"
 if "analysis_result" not in st.session_state:
     st.session_state.analysis_result = None
 if "selected_clip_window" not in st.session_state:
     st.session_state.selected_clip_window = {"start": 0.0, "end": 35.0}
 if "generated_short" not in st.session_state:
     st.session_state.generated_short = None
-if "generated_script" not in st.session_state:
-    st.session_state.generated_script = None
-if "script_feed_topic" not in st.session_state:
-    st.session_state.script_feed_topic = None
-if "feed_video_result" not in st.session_state:
-    st.session_state.feed_video_result = None
-if "vector_video_result" not in st.session_state:
-    st.session_state.vector_video_result = None
 if "publish_status_msg" not in st.session_state:
     st.session_state.publish_status_msg = None
-if "vector_topic_input" not in st.session_state:
-    st.session_state.vector_topic_input = "GTA 6 Leaked Vice City Map & Release Window"
-if "vector_script_data" not in st.session_state:
-    st.session_state.vector_script_data = None
-if "vector_angle_counter" not in st.session_state:
-    st.session_state.vector_angle_counter = 0
-if "last_vector_topic" not in st.session_state:
-    st.session_state.last_vector_topic = ""
+
+# Long Video State
+if "long_analysis_result" not in st.session_state:
+    st.session_state.long_analysis_result = None
+if "long_chapters" not in st.session_state:
+    st.session_state.long_chapters = []
+if "generated_long_video" not in st.session_state:
+    st.session_state.generated_long_video = None
+if "long_yt_meta" not in st.session_state:
+    st.session_state.long_yt_meta = None
 
 # Storage telemetry
 storage_info = workspace_cleaner.get_storage_stats()
@@ -231,36 +216,45 @@ all_rendered_videos = get_rendered_videos("*.mp4")
 # =======================================================
 with st.sidebar:
     st.markdown("### ViralShorts Pro")
-    st.caption("AI-Powered Short Video Studio")
+    st.caption("AI-Powered Video Studio")
 
-    # Main Navigation
+    # Mapping to handle legacy state gracefully
+    current_tab = st.session_state.nav_tab
+    if current_tab in ["Clip Studio", "🎬 Viral Shorts Studio"]:
+        nav_index = 0
+    elif current_tab in ["Long Video Generator", "🎞️ Long Video Generator"]:
+        nav_index = 1
+    elif current_tab in ["Exports & Video Library", "📁 Video Library & Storage", "Daily Feeds & Scripts", "Topic to Video Studio"]:
+        nav_index = 2
+    else:
+        nav_index = 0
+
+    # EXACTLY 3 SECTIONS AS REQUESTED
     st.session_state.nav_tab = st.radio(
-        "Navigation",
+        "Studio Sections:",
         options=[
-            "Clip Studio",
-            "Daily Feeds & Scripts",
-            "Topic to Video Studio",
-            "Exports & Video Library"
+            "🎬 Viral Shorts Studio",
+            "🎞️ Long Video Generator",
+            "📁 Video Library & Storage"
         ],
-        label_visibility="collapsed"
+        index=nav_index
     )
 
-    st.markdown(f"**Rendered Shorts:** `{len(all_rendered_videos)} ready`")
-
+    st.markdown(f"**Rendered Library:** `{len(all_rendered_videos)} videos ready`")
     st.divider()
 
     # Automated Social Media Publishing (Playwright Browser Sessions)
-    with st.expander("🚀 Automated Social Publishing (Browser Playwright)", expanded=False):
-        st.caption("Zero API keys, zero developer setup. Click to log in once in standard browser; your session stays saved locally!")
+    with st.expander("🚀 Social Media Accounts & Publishing", expanded=False):
+        st.caption("Sign in once to save cookies. Automatic 1-click publishing for your channels.")
 
-        # 1. YouTube Shorts
-        st.markdown("#### 📺 YouTube Shorts")
+        # 1. YouTube Shorts / Videos
+        st.markdown("#### 📺 YouTube Studio")
         yt_conn = social_status.get("youtube_connected", False)
         st.markdown(f"Status: **{'🟢 Ready (Logged In)' if yt_conn else '⚪ Not Logged In'}**")
 
         c_yt_act1, c_yt_act2 = st.columns([1.5, 1])
         with c_yt_act1:
-            if st.button("🌐 Open YouTube Login Window", key="btn_yt_login_pw", use_container_width=True):
+            if st.button("🌐 YouTube Login", key="btn_yt_login_pw", use_container_width=True):
                 res = publisher.open_login_browser("youtube")
                 st.info(res.get("message", "Browser window opened."))
         with c_yt_act2:
@@ -273,8 +267,6 @@ with st.sidebar:
             if yt_priv != social_status.get("youtube_privacy"):
                 publisher.update_settings(youtube_privacy=yt_priv)
 
-        st.caption("💡 Click 'Open YouTube Login Window', sign into your Google / YouTube Studio channel, then close the browser.")
-
         st.divider()
 
         # 2. Instagram Reels
@@ -282,64 +274,49 @@ with st.sidebar:
         ig_conn = social_status.get("instagram_connected", False)
         st.markdown(f"Status: **{'🟢 Ready (Logged In)' if ig_conn else '⚪ Not Logged In'}**")
 
-        if st.button("🌐 Open Instagram Login Window", key="btn_ig_login_pw", use_container_width=True):
+        if st.button("🌐 Instagram Login", key="btn_ig_login_pw", use_container_width=True):
             res = publisher.open_login_browser("instagram")
             st.info(res.get("message", "Browser window opened."))
-
-        st.caption("💡 Opens genuine Chrome with anti-bot stealth enabled. Sign in once to save cookies. If Instagram sends a 2FA code or security check, enter it in the opened window.")
 
         st.divider()
 
         # Auto-publish toggle
-        auto_post_toggle = st.checkbox("⚡ Auto-publish to YouTube & Instagram upon render", value=social_status.get("auto_publish", False), key="chk_autopub")
+        auto_post_toggle = st.checkbox("⚡ Auto-publish Shorts upon render", value=social_status.get("auto_publish", False), key="chk_autopub")
         if auto_post_toggle != social_status.get("auto_publish"):
             publisher.update_settings(auto_publish_on_render=auto_post_toggle)
             st.rerun()
 
-        if auto_post_toggle:
-            st.caption("🟢 **Auto-Posting Active**: Videos render and immediately upload to your logged-in channels with targeted captions & hashtags!")
-
         if st.button("🔄 Refresh Login Status", use_container_width=True, key="btn_refresh_status"):
             st.rerun()
 
-    # Disk Storage Manager
-    with st.expander("Disk Storage & Cleanup", expanded=False):
+    # Quick Storage Monitor in Sidebar
+    with st.expander("💾 Quick Storage Telemetry", expanded=False):
         reclaim_gb = storage_info["downloads_size_gb"]
         temp_mb = storage_info["temp_size_mb"]
-        st.markdown(f"**Downloaded Videos:** `{reclaim_gb:.2f} GB` ({storage_info['downloads_count']} files)")
-        st.markdown(f"**Temp Processing Cache:** `{temp_mb:.1f} MB`")
-
-        if st.button("Purge Raw Downloads (Free GBs)", use_container_width=True):
-            res = workspace_cleaner.clean_all_downloads(preserve_test_sample=True)
-            st.success(f"Purged {res['deleted_count']} files. Freed {res['freed_gb']:.2f} GB.")
-            st.rerun()
-
-        if st.button("Clean Temporary Cache", use_container_width=True):
+        st.markdown(f"**Source Downloads:** `{reclaim_gb:.2f} GB`")
+        st.markdown(f"**Temp Audio/Ass Cache:** `{temp_mb:.1f} MB`")
+        if st.button("🧹 Quick Cache Purge", use_container_width=True):
             res = workspace_cleaner.clean_temporary_files()
-            st.success(f"Freed {res['freed_mb']:.1f} MB temporary cache.")
+            st.success(f"Freed {res['freed_mb']:.1f} MB cache.")
             st.rerun()
 
     st.caption("Engine: faster-whisper int8 • FFmpeg NVENC/libx264")
 
 
 # =======================================================
-# RIGHT PANE: 80% WORKSPACE AREA
+# SECTION 1: 🎬 VIRAL SHORTS STUDIO
 # =======================================================
+if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
+    st.markdown("## 🎬 Viral Shorts Studio")
+    st.caption("Turn long videos, streams, and podcasts into viral 9:16 Shorts with smart face/speaker centering, punchline decay preservation, and auto-publishing.")
 
-# -------------------------------------------------------
-# TAB 1: CLIP STUDIO (LINK/UPLOAD -> REVIEW -> APPROVE -> DELIVERABLE)
-# -------------------------------------------------------
-if st.session_state.nav_tab == "Clip Studio":
-    st.markdown("## Clip Studio")
-    st.caption("Convert long videos and streams into 9:16 Shorts with multi-modal AI moment detection and full approval control.")
-
-    # Step 1: Input Ingestion
+    # Step 1: Source Ingestion
     with st.container():
         st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
         st.markdown("<div class='pro-card-header'><span>Source Ingestion</span><span class='pro-badge badge-blue'>Step 1</span></div>", unsafe_allow_html=True)
-        
-        c_in_type1, c_in_type2 = st.tabs(["Online Video Link (YouTube / Reels / Kick)", "Upload Local Video / Recording"])
-        
+
+        c_in_type1, c_in_type2 = st.tabs(["Online Video Link (YouTube / Twitch / Kick / Reels)", "Upload Local Video / Direct File Path"])
+
         source_input_path = None
         source_url_target = None
 
@@ -347,24 +324,26 @@ if st.session_state.nav_tab == "Clip Studio":
             url_val = st.text_input(
                 "Enter Video or Stream URL:",
                 placeholder="https://www.youtube.com/watch?v=... (YouTube Live, Twitch, Kick, or VOD)",
-                label_visibility="collapsed"
+                label_visibility="collapsed",
+                key="shorts_url_input"
             )
 
             c_mode_col1, c_mode_col2 = st.columns([1.2, 0.8])
             with c_mode_col1:
                 capture_mode = st.radio(
                     "Ingestion Strategy:",
-                    options=["⚡ Live Rolling Fragment (Recommended)", "📥 Full Video Download"],
+                    options=["⚡ Live Rolling Fragment (Instant ~3s)", "📥 Full Video Download"],
                     horizontal=True,
-                    help="Live Rolling Fragment grabs 60s–300s directly from the live stream in ~3 seconds without downloading multi-hour broadcasts."
+                    help="Live Rolling Fragment captures recent stream footage in ~3s without downloading multi-hour broadcasts."
                 )
             with c_mode_col2:
                 if capture_mode.startswith("⚡"):
                     frag_duration = st.selectbox(
                         "Fragment Window:",
                         options=[60, 90, 120, 180, 300],
-                        index=2,  # default 120s (2 mins)
-                        format_func=lambda s: f"{s}s ({s//60}m {s%60}s) Rolling Buffer" if s >= 60 else f"{s}s"
+                        index=2,
+                        format_func=lambda s: f"{s}s ({s//60}m {s%60}s) Buffer",
+                        key="shorts_frag_dur"
                     )
                 else:
                     frag_duration = 120
@@ -375,10 +354,10 @@ if st.session_state.nav_tab == "Clip Studio":
                     btn_text = f"⚡ Grab Live Fragment ({frag_duration}s) & Auto-Clip"
                 else:
                     btn_text = "📥 Download & Analyze Full Video"
-                do_analyze = st.button(btn_text, type="primary", use_container_width=True)
+                do_analyze = st.button(btn_text, type="primary", use_container_width=True, key="btn_shorts_analyze")
 
             with col_btn2:
-                do_inspect = st.button("🔍 Check Stream Info", use_container_width=True)
+                do_inspect = st.button("🔍 Check Stream Info", use_container_width=True, key="btn_shorts_inspect")
 
             if do_inspect and url_val and url_val.strip():
                 with st.spinner("Checking live broadcast status..."):
@@ -389,8 +368,7 @@ if st.session_state.nav_tab == "Clip Studio":
                         st.info(
                             f"**{live_badge}** | **Title:** `{info_check.get('title')[:60]}` | "
                             f"**Streamer:** `{info_check.get('uploader')}` | "
-                            f"**Duration:** `{format_time(info_check.get('duration', 0))}` | "
-                            f"**HLS Live Buffer:** {'⚡ Active (Fast Fragment Ready)' if info_check.get('stream_url') else 'Standard Video'}"
+                            f"**Duration:** `{format_time(info_check.get('duration', 0))}`"
                         )
                     except Exception as e:
                         st.error(f"Could not inspect stream URL: {e}")
@@ -416,15 +394,15 @@ if st.session_state.nav_tab == "Clip Studio":
                                 source_url_target = meta
                                 st.success(f"Auto-recovered! Snatched recent 180s stream buffer from `{meta.get('title')}`.")
                             except Exception as e2:
-                                st.error(f"Download issue: {e}\n\n💡 Tip: For live streams or recent live broadcasts, select '⚡ Fast Rolling Fragment Capture' above to snatch clips instantly without waiting!")
+                                st.error(f"Download issue: {e}\n\n💡 Tip: For live streams or recent live broadcasts, select '⚡ Live Rolling Fragment' above to snatch clips instantly!")
 
         with c_in_type2:
-            st.caption("Upload video files up to 4GB, or paste a local path for instant 0-second loading on massive files (e.g. 50GB OBS recordings).")
-            up_file = st.file_uploader("Select recording (.mp4, .mov, .mkv - Up to 4GB):", type=["mp4", "mov", "mkv"])
+            st.caption("Upload files up to 4GB, or paste local path for instant 0s loading on massive files (e.g. 50GB OBS recordings).")
+            up_file = st.file_uploader("Select recording (.mp4, .mov, .mkv - Up to 4GB):", type=["mp4", "mov", "mkv"], key="shorts_file_up")
             if up_file:
                 file_mb = round(len(up_file.getvalue()) / (1024 * 1024), 1) if hasattr(up_file, "getvalue") else 0
                 st.caption(f"📁 Selected: `{up_file.name}` ({file_mb} MB)")
-                if st.button("Analyze Uploaded File", type="primary", use_container_width=True):
+                if st.button("Analyze Uploaded File", type="primary", use_container_width=True, key="btn_shorts_analyze_up"):
                     save_loc = DOWNLOADS_DIR / up_file.name
                     with open(save_loc, "wb") as f:
                         f.write(up_file.getbuffer())
@@ -435,11 +413,11 @@ if st.session_state.nav_tab == "Clip Studio":
             local_path_input = st.text_input(
                 "📁 Or Enter Local Video Path (Instant 0s Load, any size e.g. 10GB+):",
                 placeholder=r"e.g. C:\Users\patel\Videos\gameplay_recording.mp4",
-                help="Directly loads local video files without browser upload delays or memory buffering."
+                key="shorts_local_path"
             )
             if local_path_input and local_path_input.strip():
                 clean_p = Path(local_path_input.strip().strip('"').strip("'"))
-                if st.button("Load Local Video File", key="btn_load_local_file", use_container_width=True):
+                if st.button("Load Local Video File", key="btn_load_local_shorts", use_container_width=True):
                     if clean_p.exists() and clean_p.is_file():
                         source_input_path = str(clean_p.resolve())
                         source_url_target = {"id": clean_p.stem, "title": clean_p.stem, "filepath": str(clean_p.resolve())}
@@ -463,7 +441,6 @@ if st.session_state.nav_tab == "Clip Studio":
                 segments = detector.analyze_moments(source_input_path, transcript)
 
                 # Ultra-fast acoustic energy reaction peak scanner across ENTIRE video duration
-                # Discovers screams, laughs, clutch cheers, and shoutouts anywhere in the video in ~2 seconds
                 try:
                     acoustic_peaks = detector.find_audio_energy_peaks(source_input_path, top_n=6, window_duration=35.0)
                 except Exception as e:
@@ -549,7 +526,7 @@ if st.session_state.nav_tab == "Clip Studio":
             burn_sc_card = False
             active_sc_item = None
             if sc_list:
-                with st.expander(f"💬 AutoClip Superchats Detected ({len(sc_list)} moments)", expanded=True):
+                with st.expander(f"💬 AutoClip Superchats Detected ({len(sc_list)} moments)", expanded=False):
                     st.caption("Viewer donations & Superchat controversies extracted from live stream:")
                     for sc_idx, sc_item in enumerate(sc_list[:5]):
                         amt = sc_item.get("amount_text") or f"${sc_item.get('amount', 20)}"
@@ -594,8 +571,8 @@ if st.session_state.nav_tab == "Clip Studio":
             with c_info:
                 st.markdown(f"**Active Clip Duration:** `{clip_len:.1f}s` (Recommended: 25s - 50s for Shorts)")
             with c_snap:
-                if st.button("⚡ AutoClip Precision Snap", help="Snaps cut timestamps to exact speech pause and complete sentence boundaries (zero mid-word cutoffs)"):
-                    snapped = autoclip_aligner.snap_boundaries(data["transcript"], start_val, end_val)
+                if st.button("⚡ AutoClip Precision Snap", help="Snaps cut timestamps to exact speech pause with punchline laughter preservation"):
+                    snapped = autoclip_aligner.snap_boundaries(data["transcript"], start_val, end_val, is_comedy_or_reaction=True)
                     st.session_state.selected_clip_window["start"] = snapped["start"]
                     st.session_state.selected_clip_window["end"] = snapped["end"]
                     st.toast(f"⚡ Snapped to speech boundary: {snapped['start']}s -> {snapped['end']}s", icon="✅")
@@ -606,7 +583,7 @@ if st.session_state.nav_tab == "Clip Studio":
             style_preset = st.selectbox("Subtitle Motion Preset:", options=list(SUBTITLE_PRESETS.keys()), format_func=lambda k: SUBTITLE_PRESETS[k]["name"])
 
         with col_rev_right:
-            st.markdown("##### Composition & Framing Settings")
+            st.markdown("##### Intelligent Framing & Layout")
 
             # Pinpoint clip framing analysis: checks whether a person is in frame, looking at camera, or pure gameplay
             clip_framing = face_detector.analyze_clip_framing(data["source_path"], start_val, clip_len)
@@ -614,19 +591,19 @@ if st.session_state.nav_tab == "Clip Studio":
 
             layout_options = [
                 "AUTO",
-                "STREAMER_SPLIT",
-                "STREAMER_ZOOMED_GAME",
                 "FULL_VERTICAL_STRIP",
                 "CINEMATIC_BLUR",
+                "STREAMER_SPLIT",
+                "STREAMER_ZOOMED_GAME",
                 "PODCAST_SPLIT"
             ]
 
             layout_format = {
                 "AUTO": f"🤖 Auto-Adaptive ({rec_mode})",
-                "STREAMER_SPLIT": "✂️ Pro Gamer Dual-View (Facecam Top + Full Uncropped Game HUD)",
-                "STREAMER_ZOOMED_GAME": "✂️ Dual View (Facecam Top + Zoomed Game Action)",
-                "FULL_VERTICAL_STRIP": "📱 Full Vertical Strip (Person / Action Centered 9:16)",
+                "FULL_VERTICAL_STRIP": "📱 Full Vertical Strip (Person Centered + Headroom Tracked)",
                 "CINEMATIC_BLUR": "🎬 Cinematic 16:9 (Full Game View + Blurred Backdrop)",
+                "STREAMER_SPLIT": "✂️ Pro Gamer Dual-View (Facecam Top + Full Game HUD)",
+                "STREAMER_ZOOMED_GAME": "✂️ Dual View (Facecam Top + Zoomed Game Action)",
                 "PODCAST_SPLIT": "🎙️ Podcast Split (Host Top / Guest Bottom)"
             }
 
@@ -635,7 +612,7 @@ if st.session_state.nav_tab == "Clip Studio":
                 options=layout_options,
                 format_func=lambda x: layout_format.get(x, x),
                 index=0,
-                help="Choose layout as needed: Full Vertical Strip (no horizontal split cuts), Cinematic Blurred 16:9, or Dual Split."
+                help="Intelligently adapts: Full Vertical Strip (person centered with golden-ratio headroom), Cinematic Blur, or Dual Split."
             )
 
             # Visual Subject & Automatic Speaker Centering Indicator
@@ -708,7 +685,7 @@ if st.session_state.nav_tab == "Clip Studio":
                     m_crop_start = max(0, min(src_w - crop_half * 2, user_speaker_cx - crop_half))
                     st.caption(f"📐 **Manual Crop Window:** `[{m_crop_start}px - {m_crop_start + crop_half*2}px]` ➡️ **Subject Centered at 540px**")
                 else:
-                    st.caption("*(Using AI Automatic Active-Speaker Tracking)*")
+                    st.caption("*(Using AI Automatic Active-Speaker Tracking with Golden-Ratio Headroom)*")
 
             st.caption(f"💡 **Framing Note:** {clip_framing.get('reason', '')}")
 
@@ -745,11 +722,11 @@ if st.session_state.nav_tab == "Clip Studio":
                         style_preset=style_preset
                     )
 
-                    # Merge pinpoint clip framing into layout info so the editor tracks the person accurately
+                    # Merge pinpoint clip framing into layout info so editor tracks person accurately
                     active_layout = {**analysis["layout"], **clip_framing}
                     if st.session_state.get(override_key, False):
                         final_speaker_cx = int(st.session_state.get(manual_cx_key, ai_speaker_cx))
-                        active_layout["crop_x_expr"] = None  # user explicitly set fixed manual focus
+                        active_layout["crop_x_expr"] = None
                     else:
                         final_speaker_cx = ai_speaker_cx
                     active_layout["tracked_person_cx"] = final_speaker_cx
@@ -764,7 +741,7 @@ if st.session_state.nav_tab == "Clip Studio":
                         template=comp_mode
                     )
 
-                    # Generate social copy by inspecting original video's tags & description
+                    # Generate social copy
                     social_copy = ai_brain.generate_viral_metadata(
                         clip_text=selected_mom.get("text", "") if moments else meta.get("title", ""),
                         niche="GAMING",
@@ -787,7 +764,7 @@ if st.session_state.nav_tab == "Clip Studio":
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Step 3: Render Deliverable & Output Display for Clip Studio
+    # Step 3: Render Deliverable & Output Display for Viral Shorts
     clip_renders = get_rendered_videos("short_*.mp4") or get_rendered_videos("*.mp4")
     active_clip_file = None
     active_clip_meta = None
@@ -806,10 +783,10 @@ if st.session_state.nav_tab == "Clip Studio":
 
         if len(clip_renders) > 1:
             clip_choice = st.selectbox(
-                "Select Rendered Clip to Preview:",
+                "Select Rendered Short to Preview:",
                 options=clip_renders,
                 format_func=lambda p: f"{p.name} ({p.stat().st_size / (1024*1024):.1f} MB)",
-                key="clip_studio_file_selector"
+                key="shorts_studio_file_selector"
             )
             if clip_choice != active_clip_file:
                 active_clip_file = clip_choice
@@ -817,7 +794,7 @@ if st.session_state.nav_tab == "Clip Studio":
 
         c_out_vid, c_out_meta = st.columns([1, 1.2])
         with c_out_vid:
-            render_video_player(active_clip_file, key_prefix="clip_studio")
+            render_video_player(active_clip_file, key_prefix="shorts_studio")
         with c_out_meta:
             st.markdown("**YouTube Shorts Title:**")
             st.code(active_clip_meta.get("title", active_clip_file.stem), language=None)
@@ -826,7 +803,7 @@ if st.session_state.nav_tab == "Clip Studio":
 
             col_pub1, col_pub2 = st.columns(2)
             with col_pub1:
-                if st.button("Publish to YouTube Shorts Now", key="pub_yt_clip_studio", use_container_width=True):
+                if st.button("🚀 Publish to YouTube Shorts Now", key="pub_yt_shorts_now", use_container_width=True):
                     yt_res = publisher.publish_to_youtube(
                         video_path=str(active_clip_file),
                         title=active_clip_meta.get("title", active_clip_file.stem),
@@ -839,7 +816,7 @@ if st.session_state.nav_tab == "Clip Studio":
                         st.error(f"YouTube Error: {yt_res.get('error')}")
 
             with col_pub2:
-                if st.button("Publish to Instagram Reels Now", key="pub_ig_clip_studio", use_container_width=True):
+                if st.button("🚀 Publish to Instagram Reels Now", key="pub_ig_shorts_now", use_container_width=True):
                     ig_res = publisher.publish_to_instagram(
                         video_url_or_path=str(active_clip_file),
                         caption=f"{active_clip_meta.get('instagram_caption', '')}\n\n{active_clip_meta.get('hashtags', '')}"
@@ -851,574 +828,421 @@ if st.session_state.nav_tab == "Clip Studio":
 
         st.markdown("</div>", unsafe_allow_html=True)
     elif not st.session_state.analysis_result:
-        st.info("No clips rendered yet. Ingest a video above or select 'Exports & Video Library' to see past renders.")
+        st.info("No clips rendered yet. Ingest a video above or select '📁 Video Library & Storage' to see past renders.")
 
 
-# -------------------------------------------------------
-# TAB 2: DAILY FEEDS & SCRIPTS (MULTI-CATEGORY + VIDEO RENDER)
-# -------------------------------------------------------
-elif st.session_state.nav_tab == "Daily Feeds & Scripts":
-    st.markdown("## Daily Viral Feeds & Script Studio")
-    st.caption("Live high-voltage gaming feeds: GTA 6 updates, live stream moments (Speed, Kai, xQc), creator drama & esports clutches.")
+# =======================================================
+# SECTION 2: 🎞️ LONG VIDEO GENERATOR
+# =======================================================
+elif st.session_state.nav_tab in ["🎞️ Long Video Generator", "Long Video Generator"]:
+    st.markdown("## 🎞️ Long-Format Highlight Video Generator")
+    st.caption("Ingest long streams, podcasts, or recordings, automatically discover top highlight moments, select and reorder chapters, and merge them into a single 16:9 widescreen YouTube compilation with chapter titles and clickable timestamps.")
 
-    if "feed_category_filter" not in st.session_state:
-        st.session_state.feed_category_filter = "ALL"
+    # Step 1: Input Ingestion for Long Video
+    with st.container():
+        st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
+        st.markdown("<div class='pro-card-header'><span>Source Stream or Recording Ingestion</span><span class='pro-badge badge-blue'>Step 1</span></div>", unsafe_allow_html=True)
 
-    cat_col1, cat_col2, cat_col3, cat_col4, cat_col5, cat_col6 = st.columns(6)
-    with cat_col1:
-        if st.button("🔥 All Gaming", use_container_width=True):
-            st.session_state.feed_category_filter = "ALL"
-            st.rerun()
-    with cat_col2:
-        if st.button("🎮 GTA 6 & Releases", use_container_width=True):
-            st.session_state.feed_category_filter = "GTA6_GAMES"
-            st.rerun()
-    with cat_col3:
-        if st.button("🔴 Top Streamers", use_container_width=True):
-            st.session_state.feed_category_filter = "STREAMERS"
-            st.rerun()
-    with cat_col4:
-        if st.button("⚡ Drama & Bans", use_container_width=True):
-            st.session_state.feed_category_filter = "DRAMA_BANS"
-            st.rerun()
-    with cat_col5:
-        if st.button("🏆 Esports & BGMI", use_container_width=True):
-            st.session_state.feed_category_filter = "ESPORTS"
-            st.rerun()
-    with cat_col6:
-        if st.button("😂 Memes & Rage", use_container_width=True):
-            st.session_state.feed_category_filter = "MEMES"
-            st.rerun()
+        l_tab1, l_tab2 = st.tabs(["Online Video Link (YouTube / Twitch / Kick)", "Upload Local Video / Direct File Path"])
 
-    active_category = st.session_state.feed_category_filter
+        long_src_path = None
+        long_src_target = None
 
-    # Fetch live stories
-    stories = feed_manager.fetch_category_feed(category=active_category, limit=8)
+        with l_tab1:
+            l_url_val = st.text_input(
+                "Enter Stream or VOD URL:",
+                placeholder="https://www.youtube.com/watch?v=... (Full Stream, Podcast, or Gameplay VOD)",
+                key="long_url_input"
+            )
 
-    st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
-    st.markdown(f"<div class='pro-card-header'><span>Live Real-Time Stories ({len(stories)} active topics)</span><span class='pro-badge badge-blue'>Select Topic</span></div>", unsafe_allow_html=True)
+            col_l_cfg1, col_l_cfg2 = st.columns([1, 1])
+            with col_l_cfg1:
+                target_chapter_count = st.slider("Target Number of Highlight Chapters:", min_value=3, max_value=12, value=6, key="long_num_chapters")
+            with col_l_cfg2:
+                chapter_dur_range = st.select_slider(
+                    "Chapter Target Duration (seconds):",
+                    options=[30, 45, 60, 90, 120, 150],
+                    value=(45, 90),
+                    key="long_chapter_dur_range"
+                )
 
-    selected_story = None
-    for idx, st_item in enumerate(stories):
-        c_sel, c_txt = st.columns([0.1, 0.9])
-        with c_sel:
-            is_picked = st.checkbox("", key=f"feed_chk_{st_item['id']}")
-            if is_picked:
-                selected_story = st_item
-        with c_txt:
-            st.markdown(f"**{st_item['title']}**")
-            st.caption(f"{st_item['category_label']} • {st_item['source']} • {st_item['freshness']}")
+            if st.button("📥 Download & Scan Stream for Top Highlights", type="primary", use_container_width=True, key="btn_long_scan"):
+                if l_url_val and l_url_val.strip():
+                    downloader = VideoDownloader()
+                    with st.spinner("Downloading stream metadata and analyzing audio..."):
+                        try:
+                            meta = downloader.download(l_url_val.strip())
+                            long_src_path = meta["filepath"]
+                            long_src_target = meta
+                        except Exception as e:
+                            st.warning(f"Full download was reset ({e}). Capturing recent 300s stream buffer...")
+                            try:
+                                meta = downloader.capture_live_fragment(l_url_val.strip(), duration_sec=300)
+                                long_src_path = meta["filepath"]
+                                long_src_target = meta
+                            except Exception as e2:
+                                st.error(f"Download failed: {e}")
+
+        with l_tab2:
+            st.caption("Upload files up to 4GB, or paste local path for instant 0-second loading on massive files (e.g. 50GB recordings).")
+            up_file_l = st.file_uploader("Select stream recording (.mp4, .mov, .mkv - Up to 4GB):", type=["mp4", "mov", "mkv"], key="long_file_up")
+            if up_file_l:
+                if st.button("Analyze Uploaded File for Highlights", type="primary", use_container_width=True, key="btn_long_up_scan"):
+                    save_loc = DOWNLOADS_DIR / up_file_l.name
+                    with open(save_loc, "wb") as f:
+                        f.write(up_file_l.getbuffer())
+                    long_src_path = str(save_loc)
+                    long_src_target = {"id": up_file_l.name, "title": up_file_l.name, "filepath": str(save_loc)}
+
+            st.markdown("---")
+            l_local_path = st.text_input(
+                "📁 Or Enter Local Video Path (Instant 0s Load, any size e.g. 10GB+):",
+                placeholder=r"e.g. C:\Users\patel\Videos\full_stream_vod.mp4",
+                key="long_local_path"
+            )
+            if l_local_path and l_local_path.strip():
+                clean_lp = Path(l_local_path.strip().strip('"').strip("'"))
+                if st.button("Load Local Video File for Long Highlights", key="btn_load_local_long", use_container_width=True):
+                    if clean_lp.exists() and clean_lp.is_file():
+                        long_src_path = str(clean_lp.resolve())
+                        long_src_target = {"id": clean_lp.stem, "title": clean_lp.stem, "filepath": str(clean_lp.resolve())}
+                        st.success(f"Loaded `{clean_lp.name}` directly from disk!")
+                    else:
+                        st.error(f"File not found: {clean_lp}")
+
+        # Scan and detect highlight chapters
+        if long_src_path:
+            with st.spinner("Scanning entire video for climax reactions, clutch plays, and high-energy chapters..."):
+                analyzer = VideoAnalyzer()
+                analysis = analyzer.analyze(long_src_path)
+                probe = analysis.get("probe", {})
+                dur = float(probe.get("duration", 0.0))
+
+                transcriber = AudioTranscriber()
+                scan_len = min(dur, 900.0) if dur > 0 else 600.0
+                transcript = transcriber.transcribe(long_src_path, start_time=0.0, duration=scan_len)
+
+                detected_chapters = long_video_generator.detect_highlight_chapters(
+                    video_path=long_src_path,
+                    transcript=transcript,
+                    duration=dur,
+                    target_count=target_chapter_count if 'target_chapter_count' in locals() else 6,
+                    min_chapter_duration=float(chapter_dur_range[0]) if 'chapter_dur_range' in locals() else 40.0,
+                    max_chapter_duration=float(chapter_dur_range[1]) if 'chapter_dur_range' in locals() else 95.0
+                )
+
+                st.session_state.long_analysis_result = {
+                    "source_path": long_src_path,
+                    "metadata": long_src_target,
+                    "analysis": analysis,
+                    "transcript": transcript,
+                    "duration": dur
+                }
+                st.session_state.long_chapters = detected_chapters
+                st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # Step 2: Interactive Chapter Selection, Reordering & Editing
+    if st.session_state.long_analysis_result and st.session_state.long_chapters:
+        l_data = st.session_state.long_analysis_result
+        l_meta = l_data["metadata"]
+        chapters = st.session_state.long_chapters
+
+        st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
+        st.markdown("<div class='pro-card-header'><span>Interactive Chapter Selection & Customization</span><span class='pro-badge badge-amber'>Step 2</span></div>", unsafe_allow_html=True)
+
+        st.markdown(f"**Source Video:** `{l_meta.get('title', 'Video')[:60]}` | **Total Source Length:** `{format_time(l_data['duration'])}`")
+        st.caption("Select which highlight chapters to include. You can edit the chapter titles — they will appear on-screen as broadcast lower-thirds and in the YouTube timestamps!")
+
+        updated_chapters = []
+        for idx, ch in enumerate(chapters):
+            c_tag = ch.get("tag", "🔥 HIGHLIGHT")
+            c_start = float(ch["start"])
+            c_end = float(ch["end"])
+            c_dur = float(ch["duration"])
+
+            col_ck, col_time, col_title = st.columns([0.6, 1.8, 3.6])
+            with col_ck:
+                is_sel = st.checkbox(
+                    "Include",
+                    value=ch.get("selected", True),
+                    key=f"ch_sel_{idx}",
+                    label_visibility="collapsed"
+                )
+            with col_time:
+                st.markdown(f"**Chapter {idx+1}** `{format_time(c_start)} - {format_time(c_end)}` (`{c_dur:.0f}s`)\n\n<span class='pro-badge badge-blue'>{c_tag}</span>", unsafe_allow_html=True)
+            with col_title:
+                new_title = st.text_input(
+                    f"Chapter {idx+1} Title (Lower-Third Banner):",
+                    value=ch.get("title", f"Highlight Scene {idx+1}"),
+                    key=f"ch_title_{idx}",
+                    label_visibility="collapsed"
+                )
+
+            updated_chapters.append({
+                **ch,
+                "selected": is_sel,
+                "title": new_title
+            })
+
+        st.session_state.long_chapters = updated_chapters
+
+        # Calculate total merged video duration
+        selected_chs = [c for c in updated_chapters if c.get("selected")]
+        total_merged_s = sum(float(c["duration"]) for c in selected_chs)
+
+        st.markdown(f"📊 **Selected Chapters:** `{len(selected_chs)} of {len(chapters)}` | **Estimated Final Video Runtime:** `{format_time(total_merged_s)}` (`{total_merged_s:.1f}s`)")
+
+        # Step 3: Merger Options & Render
         st.divider()
+        st.markdown("##### Broadcast Assembly & Polish Options")
 
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # Script Generation Panel
-    if selected_story or st.session_state.script_feed_topic:
-        current_topic = selected_story["title"] if selected_story else st.session_state.script_feed_topic
-        st.session_state.script_feed_topic = current_topic
-
-        st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
-        st.markdown("<div class='pro-card-header'><span>AI Vertical Script Generator</span><span class='pro-badge badge-amber'>Script Engine</span></div>", unsafe_allow_html=True)
-
-        col_tone, col_regen = st.columns([2, 1])
-        with col_tone:
-            tone_setting = st.selectbox(
-                "Script Narrative Tone:",
-                options=["Dramatic & High Tension", "Humorous & Sarcastic", "Investigative Case Study", "Energetic & Fast-Paced"]
+        col_opt1, col_opt2, col_opt3 = st.columns(3)
+        with col_opt1:
+            trans_opt = st.selectbox(
+                "Transition Between Chapters:",
+                options=["dip_to_black", "crossfade", "clean_cut"],
+                format_func=lambda x: "🎬 Dip to Black (YouTube Standard)" if x == "dip_to_black" else ("✨ Smooth Crossfade" if x == "crossfade" else "✂️ Clean Cut"),
+                key="long_trans_opt"
             )
-        with col_regen:
-            st.write("")
-            regen_clicked = st.button("Regenerate Alternative Script", use_container_width=True)
-
-        if regen_clicked or not st.session_state.generated_script:
-            script_data = feed_manager.generate_vertical_script(
-                topic=current_topic,
-                category=active_category,
-                tone=tone_setting
-            )
-            st.session_state.generated_script = script_data
-
-        if st.session_state.generated_script:
-            s_data = st.session_state.generated_script
-            st.markdown(f"**Top Hook Banner:** `{s_data.get('hook_banner', 'THE REAL STORY')}`")
-
-            final_script_text = st.text_area(
-                "Script Narrative (35-40s):",
-                value=s_data.get("script_text", ""),
-                height=160
-            )
-
-            # AutoClip: Search and match real footage & live stream clips for this topic
-            if "feed_discovered_clips" not in st.session_state or st.session_state.get("last_feed_clip_topic") != current_topic:
-                st.session_state.feed_discovered_clips = clip_story_engine.search_relevant_clips(current_topic, limit=4)
-                st.session_state.last_feed_clip_topic = current_topic
-
-            disc_clips = st.session_state.get("feed_discovered_clips", [])
-            st.markdown("##### 🎯 AutoClip Real Footage & Stream Clip Discovery")
-            clip_choices = ["⚡ (Auto-Match) Best Stream Highlight / Gameplay Snippet"]
-            for c in disc_clips:
-                clip_choices.append(f"📹 [{c.get('uploader', 'Creator')}] {c.get('title', 'Video Clip')[:60]}")
-            clip_choices.append("🔗 Enter Custom YouTube / Twitch Video URL")
-
-            chosen_clip_opt = st.radio("Select Real Video Footage Source for this Short:", options=clip_choices, key="feed_clip_choice_radio")
-            custom_clip_url = ""
-            if chosen_clip_opt == "🔗 Enter Custom YouTube / Twitch Video URL":
-                custom_clip_url = st.text_input("Paste YouTube / Live Stream Video URL:", placeholder="https://www.youtube.com/watch?v=...", key="feed_custom_clip_url")
-
-            selected_clip_src = None
-            if custom_clip_url and custom_clip_url.strip():
-                selected_clip_src = custom_clip_url.strip()
-            elif chosen_clip_opt.startswith("📹") and disc_clips:
-                clip_idx = clip_choices.index(chosen_clip_opt) - 1
-                if 0 <= clip_idx < len(disc_clips):
-                    selected_clip_src = disc_clips[clip_idx].get("url")
-
-            col_f_voice, col_f_sub = st.columns(2)
-            with col_f_voice:
-                v_opts = tts_engine.get_available_voices()
-                feed_voice = st.selectbox(
-                    "Studio Neural Voice:",
-                    options=[v["id"] for v in v_opts],
-                    format_func=lambda vid: next((v["name"] for v in v_opts if v["id"] == vid), vid),
-                    key="feed_voice_select"
-                )
-            with col_f_sub:
-                feed_sub_preset = st.selectbox(
-                    "Subtitle Kinetic Style:",
-                    options=list(SUBTITLE_PRESETS.keys()),
-                    format_func=lambda k: SUBTITLE_PRESETS[k]["name"],
-                    key="feed_sub_style_select"
-                )
-
-            # Direct 1-Click Video Render Button + Forwarding Options
-            st.write("")
-            c_rend, c_act1, c_act2 = st.columns([1.4, 1, 1])
-            with c_rend:
-                if st.button("🎬 Render Real-Footage Short (1080x1920)", type="primary", use_container_width=True):
-                    with st.spinner("Synthesizing Studio Neural voiceover & fetching real proof footage..."):
-                        feed_vid_res = clip_story_engine.build_clip_story_video(
-                            script_text=final_script_text,
-                            topic=current_topic,
-                            clip_source=selected_clip_src,
-                            voice_id=feed_voice,
-                            custom_hook_title=s_data.get("hook_banner", "THE REAL STORY"),
-                            subtitle_preset=feed_sub_preset
-                        )
-                        st.session_state.feed_video_result = feed_vid_res
-                        if publisher.creds.get("auto_publish_on_render"):
-                            pub_res = publisher.auto_publish_if_enabled(feed_vid_res["output_path"], feed_vid_res["social_copy"])
-                            st.session_state.publish_status_msg = pub_res
-                        st.rerun()
-
-            with c_act1:
-                if st.button("Send to Topic Video Studio", use_container_width=True):
-                    st.session_state.vector_script_buffer = final_script_text
-                    st.session_state.vector_topic_input = current_topic
-                    st.session_state.nav_tab = "Topic to Video Studio"
-                    st.rerun()
-            with c_act2:
-                if st.button("Search & Cut Stream Highlights", use_container_width=True):
-                    st.session_state.nav_tab = "Clip Studio"
-                    st.rerun()
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # Deliverable display for Tab 2 (Feed Generated Video)
-    feed_renders = get_rendered_videos("story_*.mp4") or get_rendered_videos("vector_short_*.mp4") or get_rendered_videos("*.mp4")
-    cur_feed_vid = None
-    cur_feed_meta = None
-
-    if st.session_state.feed_video_result and Path(st.session_state.feed_video_result["output_path"]).exists():
-        cur_feed_vid = Path(st.session_state.feed_video_result["output_path"])
-        cur_feed_meta = st.session_state.feed_video_result.get("social_copy", {})
-    elif feed_renders:
-        cur_feed_vid = feed_renders[0]
-        cur_feed_meta = ai_brain.generate_viral_metadata(clip_text=cur_feed_vid.stem, niche="NEWS")
-
-    render_publish_status_banner()
-    if cur_feed_vid and cur_feed_vid.exists():
-        st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
-        st.markdown("<div class='pro-card-header'><span>Rendered Feed Video Deliverable</span><span class='pro-badge badge-green'>Ready to Publish</span></div>", unsafe_allow_html=True)
-
-        if len(feed_renders) > 1:
-            f_pick = st.selectbox(
-                "Select Feed Video to Preview:",
-                options=feed_renders,
-                format_func=lambda p: f"{p.name} ({p.stat().st_size / (1024*1024):.1f} MB)",
-                key="feed_studio_file_selector"
-            )
-            if f_pick != cur_feed_vid:
-                cur_feed_vid = f_pick
-                cur_feed_meta = ai_brain.generate_viral_metadata(clip_text=cur_feed_vid.stem, niche="NEWS")
-
-        c_f_vid, c_f_meta = st.columns([1, 1.2])
-        with c_f_vid:
-            render_video_player(cur_feed_vid, key_prefix="feed_studio")
-        with c_f_meta:
-            st.markdown("**Viral Video Title:**")
-            st.code(cur_feed_meta.get("title", cur_feed_vid.stem), language=None)
-            st.markdown("**Captions & Hashtags:**")
-            st.code(f"{cur_feed_meta.get('instagram_caption', '')}\n\n{cur_feed_meta.get('hashtags', '')}", language=None)
-
-            col_fp1, col_fp2 = st.columns(2)
-            with col_fp1:
-                if st.button("Publish to YouTube Shorts", key="pub_yt_feed_btn", use_container_width=True):
-                    yt_p = publisher.publish_to_youtube(
-                        video_path=str(cur_feed_vid),
-                        title=cur_feed_meta.get("title", cur_feed_vid.stem),
-                        description=cur_feed_meta.get("instagram_caption", ""),
-                        tags=cur_feed_meta.get("hashtags", "")
-                    )
-                    if yt_p.get("success"):
-                        st.success(f"Published to YouTube Shorts: {yt_p.get('url')}")
-                    else:
-                        st.error(f"Error: {yt_p.get('error')}")
-            with col_fp2:
-                if st.button("Publish to Instagram Reels", key="pub_ig_feed_btn", use_container_width=True):
-                    ig_p = publisher.publish_to_instagram(
-                        video_url_or_path=str(cur_feed_vid),
-                        caption=f"{cur_feed_meta.get('instagram_caption', '')}\n\n{cur_feed_meta.get('hashtags', '')}"
-                    )
-                    if ig_p.get("success"):
-                        st.success(f"Published to Instagram Reel: {ig_p.get('url')}")
-                    else:
-                        st.error(f"Error: {ig_p.get('error')}")
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-
-# -------------------------------------------------------
-# TAB 3: TOPIC TO REAL-CLIP VIDEO STUDIO (AUTOCLIP + REDO + RENDER)
-# -------------------------------------------------------
-elif st.session_state.nav_tab in ["Topic to Video Studio", "Script to Vector Video"]:
-    st.markdown("## Topic to Real-Clip Video Studio")
-    st.caption("AutoClip Engine: Enter any topic or pick from live trending feeds. The AI discovers real stream footage & proof clips, generates high-voltage scripts, and renders an authentic 1080x1920 Short.")
-
-    # Check if a custom script was forwarded from Tab 2
-    if hasattr(st.session_state, "vector_script_buffer") and st.session_state.vector_script_buffer:
-        forwarded_text = st.session_state.vector_script_buffer
-        del st.session_state.vector_script_buffer
-        if forwarded_text:
-            st.session_state.vector_script_data = {
-                "hook_banner": "THE REAL STORY 🚨",
-                "script_text": forwarded_text
-            }
-
-    # Step 1: Topic Input & Quick Suggestions
-    with st.container():
-        st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
-        st.markdown("<div class='pro-card-header'><span>1. Enter Topic or Select from Trending Feeds</span><span class='pro-badge badge-blue'>Topic Input</span></div>", unsafe_allow_html=True)
-
-        col_top_in, col_top_btn = st.columns([3, 1])
-        with col_top_in:
-            cur_topic = st.text_input(
-                "Enter Video Topic:",
-                value=st.session_state.vector_topic_input,
-                placeholder="e.g. GTA 6 leaked map scale, IShowSpeed stream record, xQc ban controversy...",
-                key="v_topic_text"
-            )
-            st.session_state.vector_topic_input = cur_topic
-
-        with col_top_btn:
-            st.write("")
-            if st.button("Generate Script from Topic", type="secondary", use_container_width=True):
-                st.session_state.vector_angle_counter = 0
-                st.session_state.vector_script_data = feed_manager.generate_vertical_script(
-                    topic=cur_topic,
-                    angle_index=0
-                )
-                st.session_state.last_vector_topic = cur_topic
-                st.rerun()
-
-        # Quick Suggestion Chips from Current Live Feeds
-        st.markdown("###### Trending Topic Suggestions (Click to autofill):")
-        chip_col1, chip_col2, chip_col3, chip_col4 = st.columns(4)
-        with chip_col1:
-            if st.button("🎮 GTA 6 Vice City Map", use_container_width=True, key="chip_1"):
-                st.session_state.vector_topic_input = "GTA 6 Leaked Vice City Map & World Scale"
-                st.session_state.vector_angle_counter = 0
-                st.session_state.vector_script_data = feed_manager.generate_vertical_script(st.session_state.vector_topic_input, angle_index=0)
-                st.session_state.last_vector_topic = st.session_state.vector_topic_input
-                st.rerun()
-        with chip_col2:
-            if st.button("🔴 IShowSpeed 1M Stream", use_container_width=True, key="chip_2"):
-                st.session_state.vector_topic_input = "IShowSpeed Live Stream Hits 1 Million Concurrent Viewers"
-                st.session_state.vector_angle_counter = 0
-                st.session_state.vector_script_data = feed_manager.generate_vertical_script(st.session_state.vector_topic_input, angle_index=0)
-                st.session_state.last_vector_topic = st.session_state.vector_topic_input
-                st.rerun()
-        with chip_col3:
-            if st.button("⚡ Top Streamer Twitch Ban", use_container_width=True, key="chip_3"):
-                st.session_state.vector_topic_input = "Popular Streamer Permanently Banned on Twitch Over Wild Clip"
-                st.session_state.vector_angle_counter = 0
-                st.session_state.vector_script_data = feed_manager.generate_vertical_script(st.session_state.vector_topic_input, angle_index=0)
-                st.session_state.last_vector_topic = st.session_state.vector_topic_input
-                st.rerun()
-        with chip_col4:
-            if st.button("🏆 Jonathan 1v4 Clutch", use_container_width=True, key="chip_4"):
-                st.session_state.vector_topic_input = "Jonathan Gaming & Scout Insane 1v4 BGMI Finals Clutch"
-                st.session_state.vector_angle_counter = 0
-                st.session_state.vector_script_data = feed_manager.generate_vertical_script(st.session_state.vector_topic_input, angle_index=0)
-                st.session_state.last_vector_topic = st.session_state.vector_topic_input
-                st.rerun()
-
-        # Auto-generate script if not yet generated or topic changed
-        if not st.session_state.vector_script_data or st.session_state.last_vector_topic != cur_topic:
-            st.session_state.vector_script_data = feed_manager.generate_vertical_script(
-                topic=cur_topic,
-                angle_index=st.session_state.vector_angle_counter
-            )
-            st.session_state.last_vector_topic = cur_topic
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # Step 2: Auto-Generated Script Review & Redo Script Controls
-    script_data = st.session_state.vector_script_data
-    with st.container():
-        st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
-        st.markdown("<div class='pro-card-header'><span>2. Auto-Generated Viral Script & Review</span><span class='pro-badge badge-amber'>Script Engine</span></div>", unsafe_allow_html=True)
-
-        col_tone, col_redo = st.columns([2, 1.2])
-        with col_tone:
-            tone_setting = st.selectbox(
-                "Narrative Style & Angle:",
-                options=["Dramatic & High Tension", "Shocking Leak & Rumors", "Humorous & Sarcastic", "Fast-Paced Hype"],
-                key="v_tone_select"
-            )
-        with col_redo:
-            st.write("")
-            if st.button("🔁 Redo Script (Alternative Angle)", type="secondary", use_container_width=True, key="btn_redo_script"):
-                st.session_state.vector_angle_counter += 1
-                new_s = feed_manager.generate_vertical_script(
-                    topic=st.session_state.vector_topic_input,
-                    tone=tone_setting,
-                    angle_index=st.session_state.vector_angle_counter
-                )
-                st.session_state.vector_script_data = new_s
-                st.success("Regenerated fresh alternative script angle!")
-                st.rerun()
-
-        hook_banner_input = st.text_input(
-            "Top Motion Hook Banner Title:",
-            value=script_data.get("hook_banner", "VIRAL MOMENT"),
-            key="v_hook_banner"
-        )
-
-        editable_script_text = st.text_area(
-            "Script Narrative (35-40s) — Review or Edit freely:",
-            value=script_data.get("script_text", ""),
-            height=140,
-            key="v_script_textarea"
-        )
-
-        # Step 3: AutoClip Real Footage & Stream Clip Discovery
-        if "topic_discovered_clips" not in st.session_state or st.session_state.get("last_topic_clip_q") != cur_topic:
-            st.session_state.topic_discovered_clips = clip_story_engine.search_relevant_clips(cur_topic, limit=4)
-            st.session_state.last_topic_clip_q = cur_topic
-
-        t_clips = st.session_state.get("topic_discovered_clips", [])
-        st.markdown("##### 🎯 AutoClip Real Footage & Stream Proof Clips")
-        t_choices = ["⚡ (Auto-Match) Best Stream Highlight / Gameplay Snippet"]
-        for c in t_clips:
-            t_choices.append(f"📹 [{c.get('uploader', 'Creator')}] {c.get('title', 'Video Clip')[:60]}")
-        t_choices.append("🔗 Enter Custom YouTube / Twitch Video URL")
-
-        chosen_t_opt = st.radio("Select Real Video Footage Source for this Short:", options=t_choices, key="topic_clip_choice_radio")
-        custom_t_url = ""
-        if chosen_t_opt == "🔗 Enter Custom YouTube / Twitch Video URL":
-            custom_t_url = st.text_input("Paste YouTube / Live Stream Video URL:", placeholder="https://www.youtube.com/watch?v=...", key="topic_custom_clip_url")
-
-        selected_topic_src = None
-        if custom_t_url and custom_t_url.strip():
-            selected_topic_src = custom_t_url.strip()
-        elif chosen_t_opt.startswith("📹") and t_clips:
-            t_idx = t_choices.index(chosen_t_opt) - 1
-            if 0 <= t_idx < len(t_clips):
-                selected_topic_src = t_clips[t_idx].get("url")
-
-        # Step 4: Voiceover & Kinetic Subtitle Settings
-        col_v1, col_v2 = st.columns(2)
-        with col_v1:
-            voice_options = tts_engine.get_available_voices()
-            chosen_voice = st.selectbox(
-                "OmniVoice Narration Voice:",
-                options=[v["id"] for v in voice_options],
-                format_func=lambda vid: next((v["name"] for v in voice_options if v["id"] == vid), vid),
-                key="v_voice_select"
-            )
-        with col_v2:
-            sub_style_vec = st.selectbox(
-                "Subtitle Kinetic Preset:",
-                options=list(SUBTITLE_PRESETS.keys()),
-                format_func=lambda k: SUBTITLE_PRESETS[k]["name"],
-                key="v_subtitle_preset"
-            )
+        with col_opt2:
+            add_lower_thirds = st.checkbox("🏷️ Add On-Screen Chapter Title Cards", value=True, key="long_add_title_cards", help="Displays an aesthetic lower-third chapter title banner for the first 3.5 seconds of each segment.")
+        with col_opt3:
+            norm_audio = st.checkbox("🔊 EBU R128 Audio Normalization", value=True, key="long_norm_audio", help="Equalizes loudness across all clips to standard -16 LUFS broadcast level.")
 
         st.write("")
-        # Step 5: Generate Real-Footage Short Button
-        if st.button("🎬 Generate Real-Footage Short Video (1080x1920)", type="primary", use_container_width=True, key="btn_gen_vector_video"):
-            if editable_script_text and editable_script_text.strip():
-                with st.spinner("Synthesizing Studio Neural voiceover, fetching real proof footage & compositing 1080x1920 video..."):
-                    story_res = clip_story_engine.build_clip_story_video(
-                        script_text=editable_script_text.strip(),
-                        topic=cur_topic,
-                        clip_source=selected_topic_src,
-                        voice_id=chosen_voice,
-                        custom_hook_title=hook_banner_input,
-                        subtitle_preset=sub_style_vec
+        if st.button("🎞️ Compile & Render 16:9 Long-Format Highlight Video", type="primary", use_container_width=True, key="btn_compile_long"):
+            if not selected_chs:
+                st.warning("Please select at least one chapter to compile.")
+            else:
+                progress_bar = st.progress(0.0)
+                status_text = st.empty()
+
+                def update_prog(ratio, txt):
+                    progress_bar.progress(min(1.0, max(0.0, ratio)))
+                    status_text.text(txt)
+
+                with st.spinner("Extracting chapters, adding title cards, and compiling 16:9 video..."):
+                    clean_title = "".join([c if c.isalnum() else "_" for c in Path(l_data["source_path"]).stem])[:25]
+                    out_filename = f"long_highlight_{clean_title}_{len(selected_chs)}chapters.mp4"
+                    target_out = OUTPUT_DIR / out_filename
+
+                    render_res = long_video_generator.render_merged_video(
+                        source_video=l_data["source_path"],
+                        chapters=selected_chs,
+                        output_path=str(target_out),
+                        transition_type=trans_opt,
+                        add_lower_thirds=add_lower_thirds,
+                        normalize_audio=norm_audio,
+                        progress_callback=update_prog
                     )
-                    st.session_state.vector_video_result = story_res
 
-                    # Auto-publish if enabled
-                    if publisher.creds.get("auto_publish_on_render"):
-                        pub_res = publisher.auto_publish_if_enabled(story_res["output_path"], story_res["social_copy"])
-                        st.session_state.publish_status_msg = pub_res
+                    yt_meta = long_video_generator.generate_youtube_metadata(
+                        source_title=l_meta.get("title", clean_title),
+                        chapters=selected_chs
+                    )
 
+                    st.session_state.generated_long_video = {
+                        "path": str(target_out),
+                        "filename": out_filename,
+                        "duration": render_res["duration"],
+                        "file_size_mb": render_res["file_size_mb"]
+                    }
+                    st.session_state.long_yt_meta = yt_meta
                     st.rerun()
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Deliverable View for Real Footage Video
-    vec_renders = get_rendered_videos("story_*.mp4") or get_rendered_videos("vector_short_*.mp4") or get_rendered_videos("*.mp4")
-    cur_vec_file = None
-    cur_vec_meta = None
+    # Step 4: Finished Long Video Deliverable & YouTube Publishing
+    long_renders = get_rendered_videos("long_*.mp4")
+    active_long_file = None
+    active_long_meta = None
 
-    if st.session_state.vector_video_result and Path(st.session_state.vector_video_result["output_path"]).exists():
-        cur_vec_file = Path(st.session_state.vector_video_result["output_path"])
-        cur_vec_meta = st.session_state.vector_video_result.get("social_copy", {})
-    elif vec_renders:
-        cur_vec_file = vec_renders[0]
-        cur_vec_meta = ai_brain.generate_viral_metadata(clip_text=cur_vec_file.stem, niche="EDUCATION")
-
-    render_publish_status_banner()
-    if cur_vec_file and cur_vec_file.exists():
-        st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
-        st.markdown("<div class='pro-card-header'><span>Rendered Real-Footage Short</span><span class='pro-badge badge-green'>1080x1920 AutoClip</span></div>", unsafe_allow_html=True)
-
-        if len(vec_renders) > 1:
-            vec_pick = st.selectbox(
-                "Select Short Video to Preview:",
-                options=vec_renders,
-                format_func=lambda p: f"{p.name} ({p.stat().st_size / (1024*1024):.1f} MB)",
-                key="vector_studio_file_selector"
-            )
-            if vec_pick != cur_vec_file:
-                cur_vec_file = vec_pick
-                cur_vec_meta = ai_brain.generate_viral_metadata(clip_text=cur_vec_file.stem, niche="EDUCATION")
-
-        col_v_play, col_v_dist = st.columns([1, 1.2])
-        with col_v_play:
-            render_video_player(cur_vec_file, key_prefix="vector_studio")
-            cover_snap = cur_vec_file.with_name(f"cover_{cur_vec_file.stem}.jpg")
-            if cover_snap.exists():
-                st.image(str(cover_snap), caption="AutoClip Generated Cover Snapshot", use_container_width=True)
-        with col_v_dist:
-            st.markdown("**Viral Title:**")
-            st.code(cur_vec_meta.get("title", cur_vec_file.stem), language=None)
-            st.markdown("**Instagram / Social Caption:**")
-            st.code(f"{cur_vec_meta.get('instagram_caption', '')}\n\n{cur_vec_meta.get('hashtags', '')}", language=None)
-
-            c_p1, c_p2 = st.columns(2)
-            with c_p1:
-                if st.button("Post to YouTube Shorts", key="pub_yt_vec_btn", use_container_width=True):
-                    yt_p = publisher.publish_to_youtube(
-                        video_path=str(cur_vec_file),
-                        title=cur_vec_meta.get("title", cur_vec_file.stem),
-                        description=cur_vec_meta.get("instagram_caption", ""),
-                        tags=cur_vec_meta.get("hashtags", "")
-                    )
-                    if yt_p.get("success"):
-                        st.success(f"Uploaded: {yt_p.get('url')}")
-                    else:
-                        st.error(f"Error: {yt_p.get('error')}")
-            with c_p2:
-                if st.button("Post to Instagram Reels", key="pub_ig_vec_btn", use_container_width=True):
-                    ig_p = publisher.publish_to_instagram(
-                        video_url_or_path=str(cur_vec_file),
-                        caption=f"{cur_vec_meta.get('instagram_caption', '')}\n\n{cur_vec_meta.get('hashtags', '')}"
-                    )
-                    if ig_p.get("success"):
-                        st.success(f"Uploaded: {ig_p.get('url')}")
-                    else:
-                        st.error(f"Error: {ig_p.get('error')}")
-
-        st.markdown("</div>", unsafe_allow_html=True)
-    else:
-        st.info("No videos rendered yet. Enter a topic above and click 'Generate Real-Footage Short Video (1080x1920)'.")
-
-
-# -------------------------------------------------------
-# TAB 4: EXPORTS & VIDEO LIBRARY (ALL GENERATED VIDEOS)
-# -------------------------------------------------------
-elif st.session_state.nav_tab == "Exports & Video Library":
-    st.markdown("## Studio Exports & Video Library")
-    st.caption("Browse, preview, download, and publish all rendered 1080x1920 MP4 Shorts generated across all modules.")
-
-    all_vids = get_rendered_videos("*.mp4")
-    
-    if not all_vids:
-        st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
-        st.info("No rendered videos found in workspace/output. Generate a clip in 'Clip Studio', a story video in 'Daily Feeds', or a real-footage video in 'Topic to Video Studio' to populate this library.")
-        st.markdown("</div>", unsafe_allow_html=True)
-    else:
-        total_size_mb = sum(p.stat().st_size for p in all_vids) / (1024 * 1024)
-        st.markdown(f"**Found {len(all_vids)} Rendered Videos** (`{total_size_mb:.1f} MB` total output storage)")
-
-        # Layout: Video selector dropdown and active player card
-        sel_vid = st.selectbox(
-            "Select Video to Play & Manage:",
-            options=all_vids,
-            format_func=lambda p: f"{p.name} — {p.stat().st_size / (1024*1024):.2f} MB"
+    if st.session_state.generated_long_video and Path(st.session_state.generated_long_video["path"]).exists():
+        active_long_file = Path(st.session_state.generated_long_video["path"])
+        active_long_meta = st.session_state.long_yt_meta
+    elif long_renders:
+        active_long_file = long_renders[0]
+        active_long_meta = long_video_generator.generate_youtube_metadata(
+            source_title=active_long_file.stem,
+            chapters=[]
         )
 
-        if sel_vid and sel_vid.exists():
-            st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
-            st.markdown(f"<div class='pro-card-header'><span>{sel_vid.name}</span><span class='pro-badge badge-green'>1080x1920 MP4</span></div>", unsafe_allow_html=True)
+    if active_long_file and active_long_file.exists():
+        st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
+        st.markdown("<div class='pro-card-header'><span>Rendered Long-Format Highlight Video (16:9 Widescreen)</span><span class='pro-badge badge-green'>Ready to Publish</span></div>", unsafe_allow_html=True)
 
-            col_lib_vid, col_lib_info = st.columns([1, 1.2])
-            with col_lib_vid:
-                render_video_player(sel_vid, key_prefix="library_view")
+        col_lv1, col_lv2 = st.columns([1.3, 1])
+        with col_lv1:
+            render_video_player(active_long_file, key_prefix="long_studio")
+        with col_lv2:
+            st.markdown(f"**File Size:** `{active_long_file.stat().st_size / (1024*1024):.2f} MB`")
+            st.markdown(f"**Resolution:** `1920x1080 (16:9 Full HD)`")
 
-            with col_lib_info:
-                st.markdown(f"**File Size:** `{sel_vid.stat().st_size / (1024*1024):.2f} MB`")
-                st.markdown(f"**File Location:** `{sel_vid}`")
+            if active_long_meta:
+                st.markdown("**YouTube Video Title:**")
+                st.code(active_long_meta.get("title", active_long_file.stem), language=None)
 
-                lib_meta = ai_brain.generate_viral_metadata(clip_text=sel_vid.stem, niche="GENERAL")
-                st.markdown("**Viral Copy Blueprint:**")
-                st.code(f"{lib_meta.get('title', sel_vid.stem)}\n\n{lib_meta.get('instagram_caption', '')}\n\n{lib_meta.get('hashtags', '')}", language=None)
+                st.markdown("**YouTube Description with Clickable Chapter Timestamps:**")
+                st.code(active_long_meta.get("description", ""), language=None)
 
-                c_l1, c_l2 = st.columns(2)
-                with c_l1:
-                    if st.button("Publish to YouTube Shorts", key="lib_pub_yt", use_container_width=True):
-                        yt_res = publisher.publish_to_youtube(
-                            video_path=str(sel_vid),
-                            title=lib_meta.get("title", sel_vid.stem),
-                            description=lib_meta.get("instagram_caption", ""),
-                            tags=lib_meta.get("hashtags", "")
-                        )
-                        if yt_res.get("success"):
-                            st.success(f"Uploaded: {yt_res.get('url')}")
+            if st.button("🚀 Publish Full Long Video to YouTube Channel", key="pub_yt_long_full", type="primary", use_container_width=True):
+                with st.spinner("Uploading 16:9 Long Video to YouTube with chapters..."):
+                    yt_res = publisher.publish_to_youtube(
+                        video_path=str(active_long_file),
+                        title=active_long_meta.get("title", active_long_file.stem) if active_long_meta else active_long_file.stem,
+                        description=active_long_meta.get("description", "") if active_long_meta else "",
+                        tags=", ".join(active_long_meta.get("tags", [])) if active_long_meta else ""
+                    )
+                    if yt_res.get("success"):
+                        st.success(f"🚀 Long Video Successfully Published to YouTube: [{yt_res.get('url')}]({yt_res.get('url')})")
+                    else:
+                        st.error(f"YouTube Upload Note: {yt_res.get('error')}")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+    elif not st.session_state.long_analysis_result:
+        st.info("No long-format videos generated yet. Enter a stream or video URL above and click 'Download & Scan Stream for Top Highlights' to start.")
+
+
+# =======================================================
+# SECTION 3: 📁 VIDEO LIBRARY & STORAGE / MEMORY MANAGER
+# =======================================================
+elif st.session_state.nav_tab in ["📁 Video Library & Storage", "Exports & Video Library"]:
+    st.markdown("## 📁 Video Library & Storage Manager")
+    st.caption("Manage all rendered Shorts & Long videos, preview and delete unwanted clips with a single click, and automatically clear temporary cache files to keep your computer fast.")
+
+    # Storage Telemetry Cards
+    storage_info = workspace_cleaner.get_storage_stats()
+    all_deliverables = workspace_cleaner.list_generated_deliverables()
+
+    st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='pro-card-header'><span>Disk Space Telemetry & Automated Memory Clean</span><span class='pro-badge badge-green'>Active Auto-Purge</span></div>", unsafe_allow_html=True)
+
+    c_m1, c_m2, c_m3 = st.columns(3)
+    with c_m1:
+        st.metric(
+            label="Raw Source Videos",
+            value=f"{storage_info['downloads_size_gb']:.2f} GB",
+            delta=f"{storage_info['downloads_count']} downloaded files"
+        )
+    with c_m2:
+        st.metric(
+            label="Temp Processing Cache",
+            value=f"{storage_info['temp_size_mb']:.1f} MB",
+            delta=f"{storage_info['temp_count']} temp audio/ass files"
+        )
+    with c_m3:
+        st.metric(
+            label="Rendered Video Deliverables",
+            value=f"{storage_info['output_size_mb']:.1f} MB",
+            delta=f"{len(all_deliverables)} finished videos"
+        )
+
+    st.write("")
+    col_cl1, col_cl2 = st.columns(2)
+    with col_cl1:
+        if st.button("🧹 Clean Temporary Processing Cache Now", use_container_width=True, key="btn_clean_temp_cache"):
+            res = workspace_cleaner.clean_temporary_files()
+            st.success(f"Cleaned {res['deleted_count']} temporary files. Freed {res['freed_mb']:.1f} MB.")
+            st.rerun()
+    with col_cl2:
+        if st.button("🚀 Deep Purge Raw Source Videos (Free GBs)", use_container_width=True, key="btn_purge_downloads", help="Deletes heavy downloaded stream source videos while keeping your rendered Shorts and Long videos 100% safe."):
+            res = workspace_cleaner.clean_all_downloads(preserve_test_sample=True)
+            st.success(f"Purged {res['deleted_count']} bulky downloads. Freed {res['freed_gb']:.2f} GB of disk space!")
+            st.rerun()
+
+    st.caption("💡 *Notice: Temporary audio chunks and .ass caches are automatically cleared in the background on startup.*")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Deliverables Gallery
+    st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
+    st.markdown(f"<div class='pro-card-header'><span>Rendered Videos Gallery ({len(all_deliverables)} Total)</span><span class='pro-badge badge-blue'>Deliverables</span></div>", unsafe_allow_html=True)
+
+    if not all_deliverables:
+        st.info("No rendered videos found yet. Use Section 1 to generate viral Shorts or Section 2 to generate Long-format highlight videos.")
+    else:
+        # Filter options
+        filter_type = st.radio(
+            "Filter Videos by Category:",
+            options=["All Videos", "🎬 Viral Shorts (9:16)", "🎞️ Long Format Videos (16:9)"],
+            horizontal=True,
+            key="lib_filter_radio"
+        )
+
+        filtered = all_deliverables
+        if filter_type == "🎬 Viral Shorts (9:16)":
+            filtered = [d for d in all_deliverables if not d["is_long_video"]]
+        elif filter_type == "🎞️ Long Format Videos (16:9)":
+            filtered = [d for d in all_deliverables if d["is_long_video"]]
+
+        st.write("")
+
+        for v_item in filtered:
+            v_path = Path(v_item["path"])
+            v_name = v_item["name"]
+            v_size = v_item["size_mb"]
+            is_long = v_item["is_long_video"]
+            badge_class = "badge-purple" if is_long else "badge-green"
+
+            with st.container():
+                st.markdown(
+                    f"<div style='background: #0f131d; border: 1px solid #1c2230; border-radius: 8px; padding: 14px; margin-bottom: 12px;'>"
+                    f"<div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;'>"
+                    f"<strong>{v_name}</strong>"
+                    f"<span class='pro-badge {badge_class}'>{v_item['category']}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+
+                c_v_play, c_v_actions = st.columns([1.2, 1])
+
+                with c_v_play:
+                    render_video_player(v_path, key_prefix=f"lib_item_{v_path.stem}")
+
+                with c_v_actions:
+                    st.markdown(f"**Size:** `{v_size:.2f} MB`")
+                    st.markdown(f"**Path:** `{v_path}`")
+
+                    # Social quick publish
+                    meta_copy = ai_brain.generate_viral_metadata(clip_text=v_path.stem, niche="GAMING")
+                    c_act_yt, c_act_ig = st.columns(2)
+                    with c_act_yt:
+                        if st.button("🚀 YouTube", key=f"lib_pub_yt_{v_path.stem}", use_container_width=True):
+                            res = publisher.publish_to_youtube(
+                                video_path=str(v_path),
+                                title=meta_copy.get("title", v_path.stem),
+                                description=meta_copy.get("instagram_caption", ""),
+                                tags=meta_copy.get("hashtags", "")
+                            )
+                            if res.get("success"):
+                                st.success(f"Published: {res.get('url')}")
+                            else:
+                                st.error(f"Error: {res.get('error')}")
+
+                    with c_act_ig:
+                        if not is_long:
+                            if st.button("🚀 Instagram", key=f"lib_pub_ig_{v_path.stem}", use_container_width=True):
+                                res = publisher.publish_to_instagram(
+                                    video_url_or_path=str(v_path),
+                                    caption=f"{meta_copy.get('instagram_caption', '')}\n\n{meta_copy.get('hashtags', '')}"
+                                )
+                                if res.get("success"):
+                                    st.success(f"Published: {res.get('url')}")
+                                else:
+                                    st.error(f"Error: {res.get('error')}")
                         else:
-                            st.error(f"Error: {yt_res.get('error')}")
+                            st.caption("*(16:9 Format for YouTube / Facebook)*")
 
-                with c_l2:
-                    if st.button("Publish to Instagram Reels", key="lib_pub_ig", use_container_width=True):
-                        ig_res = publisher.publish_to_instagram(
-                            video_url_or_path=str(sel_vid),
-                            caption=f"{lib_meta.get('instagram_caption', '')}\n\n{lib_meta.get('hashtags', '')}"
-                        )
-                        if ig_res.get("success"):
-                            st.success(f"Uploaded: {ig_res.get('url')}")
+                    st.markdown("---")
+                    # Single-Click Video Deletion for Unwanted Shorts / Videos
+                    if st.button("🗑️ Delete Video from Disk", key=f"btn_del_vid_{v_path.stem}", type="secondary", use_container_width=True):
+                        if workspace_cleaner.delete_single_deliverable(str(v_path)):
+                            st.toast(f"Deleted {v_name} and freed {v_size:.1f} MB!", icon="🗑️")
+                            st.rerun()
                         else:
-                            st.error(f"Error: {ig_res.get('error')}")
+                            st.error(f"Failed to delete {v_name}")
 
-                st.write("")
-                if st.button("Delete this Rendered Video", type="secondary", key="del_vid_lib"):
-                    try:
-                        sel_vid.unlink()
-                        st.success(f"Deleted {sel_vid.name}")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Could not delete file: {e}")
+                st.markdown("</div>", unsafe_allow_html=True)
 
-            st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
