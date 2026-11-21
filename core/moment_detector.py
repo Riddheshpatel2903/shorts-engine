@@ -13,7 +13,7 @@ import re
 import subprocess
 import logging
 from pathlib import Path
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 import numpy as np
 import soundfile as sf
 
@@ -672,3 +672,14 @@ class MomentDetector:
             })
 
         return analyzed_segments
+
+
+# Singleton instances & helper functions
+moment_detector = MomentDetector()
+viral_detector = moment_detector
+
+
+def find_audio_energy_peaks(video_path: str, num_peaks: int = 6, window_duration: float = 30.0) -> List[Dict[str, Any]]:
+    """Helper function to find peak acoustic energy moments across stream or video."""
+    return moment_detector.find_stream_reaction_peaks(video_path, top_n=num_peaks, window_duration=window_duration)
+

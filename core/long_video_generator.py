@@ -68,17 +68,15 @@ class LongVideoGenerator:
         # Discover candidate moments from transcript
         candidate_moments = []
         if transcript and isinstance(transcript, dict) and transcript.get("segments"):
-            from core.moment_detector import viral_detector
             try:
-                candidate_moments = viral_detector.find_moments_heuristic(
-                    transcript,
-                    duration=duration,
-                    max_moments=target_count * 3,
-                    min_len=min_chapter_duration,
-                    max_len=max_chapter_duration
-                )
+                from core.moment_detector import MomentDetector
+                from core.clip_selector import ClipSelector
+                md = MomentDetector()
+                analyzed = md.analyze_moments(str(video_path), transcript)
+                selector = ClipSelector(min_duration=min_chapter_duration, max_duration=max_chapter_duration)
+                candidate_moments = selector.select_clips(analyzed, num_shorts=target_count * 2)
             except Exception as e:
-                logger.warning(f"Error in transcript heuristic detection: {e}")
+                logger.warning(f"Error in transcript moment detection: {e}")
 
         # Discover acoustic energy peaks
         energy_peaks = []
