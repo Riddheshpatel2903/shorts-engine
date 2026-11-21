@@ -189,11 +189,13 @@ class LongVideoGenerator:
         transition_type: str = "dip_to_black",
         add_lower_thirds: bool = True,
         normalize_audio: bool = True,
+        enable_sfx: bool = True,
         progress_callback=None
     ) -> Dict[str, Any]:
         """
-        Extracts selected chapters, adds optional lower-third title cards,
-        and concatenates them with clean broadcast transitions and normalized audio.
+        Extracts selected chapters, adds broadcast lower-third title cards,
+        mixes transition sound effects, and concatenates them with clean
+        broadcast transitions and normalized audio.
         """
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -202,19 +204,21 @@ class LongVideoGenerator:
         if not selected_chapters:
             raise ValueError("No chapters selected for merging.")
 
+        from core.sfx_engine import sfx_engine
+
         temp_clips = []
+        temp_sfx_files = []
         total_steps = len(selected_chapters) + 1
         current_step = 0
 
         try:
-            # Step 1: Render each chapter slice with lower third title card if enabled
             font_file = "C\\:/Windows/Fonts/arialbd.ttf" if Path("C:/Windows/Fonts/arialbd.ttf").exists() else ""
             font_opt = f"fontfile='{font_file}':" if font_file else ""
 
             for idx, ch in enumerate(selected_chapters):
                 c_start = float(ch["start"])
                 c_dur = float(ch["duration"])
-                c_title = re.sub(r"[^\w\s\-\:\.\,\!]", "", ch.get("title", f"Chapter {idx+1}")).strip()[:40]
+                c_title = re.sub(r"[^\w\s\-\:\.\,\!]", "", ch.get("title", f"Chapter {idx+1}")).strip()[:42]
                 clip_out = self.processing_dir / f"long_slice_{idx}_{int(c_start)}_{int(c_dur)}.mp4"
 
                 # Video filter: Scale to standard 1920x1080 16:9 widescreen
@@ -223,25 +227,60 @@ class LongVideoGenerator:
                     "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black"
                 ]
 
-                # Add lower third chapter title card for the first 3.5 seconds
+                # Add broadcast lower-third motion graphic title card for first 4 seconds
                 if add_lower_thirds and c_title:
-                    # Draw elegant dark backdrop pill and gold/white title text
+                    ch_badge = f"CHAPTER {idx+1} OF {len(selected_chapters)}"
                     vf_parts.append(
-                        f"drawbox=x=80:y=920:w=800:h=90:color=black@0.85:t=fill:enable='between(t,0.5,4.0)',"
-                        f"drawbox=x=80:y=920:w=8:h=90:color=0x00E5FF:t=fill:enable='between(t,0.5,4.0)',"
-                        f"drawtext={font_opt}text='{c_title.upper()}':fontcolor=white:fontsize=36:x=110:y=948:enable='between(t,0.5,4.0)'"
+                        f"drawbox=x=80:y=890:w=960:h=120:color=black@0.85:t=fill:enable='between(t,0.4,4.2)',"
+                        f"drawbox=x=80:y=890:w=10:h=120:color=0x00E5FF@0.95:t=fill:enable='between(t,0.4,4.2)',"
+                        f"drawtext={font_opt}text='{ch_badge}':fontcolor=0x00E5FF:fontsize=22:x=110:y=908:enable='between(t,0.4,4.2)',"
+                        f"drawtext={font_opt}text='{c_title.upper()}':fontcolor=white:fontsize=36:x=110:y=945:enable='between(t,0.4,4.2)'"
                     )
 
                 vf_expr = ",".join(vf_parts)
+
+                # Prepare transition sound effects (whoosh on cut + chime on title card reveal)
+                sfx_track = None
+                if enable_sfx:
+                    try:
+                        sfx_evs = [
+                            {"rel_time": 0.08, "sfx": "whoosh.wav", "volume": 0.65},
+                            {"rel_time": 0.45, "sfx": "ding.wav", "volume": 0.55}
+                        ]
+                        sfx_tmp = self.processing_dir / f"ch_sfx_{idx}.wav"
+                        sfx_track = sfx_engine.create_sfx_mix_track(sfx_evs, duration=c_dur, output_path=sfx_tmp)
+                        if sfx_track:
+                            temp_sfx_files.append(sfx_track)
+                    except Exception as e:
+                        logger.warning(f"Error creating chapter SFX: {e}")
+                        sfx_track = None
 
                 # Cut and encode slice
                 cut_cmd = [
                     "ffmpeg", "-y",
                     "-ss", f"{c_start:.3f}",
-                    "-i", str(source_video),
-                    "-t", f"{c_dur:.3f}",
-                    "-avoid_negative_ts", "make_zero",
-                    "-vf", vf_expr,
+                    "-i", str(source_video)
+                ]
+
+                if sfx_track and sfx_track.exists():
+                    cut_cmd.extend(["-i", str(sfx_track)])
+                    # Mix main video audio with transition SFX
+                    af_expr = "[0:a]volume=1.0,aresample=48000[a0];[1:a]volume=1.0,aresample=48000[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[a_mix]"
+                    cut_cmd.extend([
+                        "-t", f"{c_dur:.3f}",
+                        "-avoid_negative_ts", "make_zero",
+                        "-filter_complex", f"{vf_expr}[v_out];{af_expr}",
+                        "-map", "[v_out]",
+                        "-map", "[a_mix]"
+                    ])
+                else:
+                    cut_cmd.extend([
+                        "-t", f"{c_dur:.3f}",
+                        "-avoid_negative_ts", "make_zero",
+                        "-vf", vf_expr
+                    ])
+
+                cut_cmd.extend([
                     "-c:v", "libx264",
                     "-preset", "veryfast",
                     "-crf", "20",
@@ -250,7 +289,8 @@ class LongVideoGenerator:
                     "-ar", "48000",
                     "-ac", "2",
                     str(clip_out)
-                ]
+                ])
+
                 subprocess.run(cut_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
                 temp_clips.append(clip_out)
 
@@ -300,11 +340,17 @@ class LongVideoGenerator:
             }
 
         finally:
-            # Clean temporary slices
+            # Clean temporary slices and SFX files
             for cp in temp_clips:
                 try:
                     if cp.exists():
                         cp.unlink()
+                except Exception:
+                    pass
+            for sp in temp_sfx_files:
+                try:
+                    if sp.exists():
+                        sp.unlink()
                 except Exception:
                     pass
             if 'concat_txt' in locals() and concat_txt.exists():

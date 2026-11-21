@@ -104,11 +104,15 @@ class VideoExporter:
         layout_info: Dict[str, Any],
         subtitle_path: Optional[Path],
         output_filename: str,
-        template: str = "AUTO"
+        template: str = "AUTO",
+        enable_motion_graphics: bool = True,
+        enable_sfx: bool = True,
+        sfx_events: Optional[List[Dict[str, Any]]] = None,
+        transcript: Optional[Dict[str, Any]] = None
     ) -> Path:
         """
         Renders a single vertical Short with exact start/end timestamps,
-        filter complex composition, and hardware acceleration.
+        filter complex composition, motion graphics, meme sound effects, and hardware acceleration.
         """
         out_path = self.output_dir / output_filename
         start_t = clip_info["start"]
@@ -122,11 +126,36 @@ class VideoExporter:
                 f"The source file has no video frames at this timestamp. Re-downloading the full source video is required."
             )
 
+        # Prepare Sound Effects & Meme Audio Track
+        sfx_track_path = None
+        if enable_sfx:
+            try:
+                from core.sfx_engine import sfx_engine
+                if sfx_events is None:
+                    is_comedy = bool(clip_info.get("is_comedy_or_reaction"))
+                    sfx_events = sfx_engine.detect_sfx_cues(
+                        transcript=transcript or clip_info.get("transcript", {}),
+                        clip_start=start_t,
+                        clip_end=start_t + duration,
+                        is_comedy=is_comedy
+                    )
+                if sfx_events:
+                    sfx_tmp = PROCESSING_DIR / f"sfx_mix_{int(start_t)}_{int(duration)}.wav"
+                    sfx_track_path = sfx_engine.create_sfx_mix_track(sfx_events, duration=duration, output_path=sfx_tmp)
+            except Exception as e:
+                logger.warning(f"SFX track generation error: {e}")
+                sfx_track_path = None
+
         filter_complex, v_map, a_map = self.editor.build_filter_graph(
             layout_info,
             subtitle_path=subtitle_path,
             template=template,
-            superchat_card=clip_info.get("superchat_card")
+            superchat_card=clip_info.get("superchat_card"),
+            enable_motion_graphics=enable_motion_graphics,
+            enable_progress_bar=enable_motion_graphics,
+            clip_duration=duration,
+            hook_text=clip_info.get("hook_text"),
+            has_sfx_track=(sfx_track_path is not None and sfx_track_path.exists())
         )
 
         # Base FFmpeg command
@@ -134,7 +163,13 @@ class VideoExporter:
         cmd = [
             "ffmpeg", "-y",
             "-ss", str(start_t),
-            "-i", str(source_path),
+            "-i", str(source_path)
+        ]
+
+        if sfx_track_path and sfx_track_path.exists():
+            cmd.extend(["-i", str(sfx_track_path)])
+
+        cmd.extend([
             "-t", str(duration),
             "-avoid_negative_ts", "make_zero",
             "-filter_complex", filter_complex,
@@ -142,7 +177,7 @@ class VideoExporter:
             "-map", a_map,
             "-r", "30",
             "-pix_fmt", "yuv420p"
-        ]
+        ])
 
         # Encoder selection (NVENC vs libx264)
         if self.hw_profile["nvenc_supported"]:
@@ -169,6 +204,14 @@ class VideoExporter:
 
         logger.info(f"Rendering Short to {out_path} ({duration}s)...")
         res = subprocess.run(cmd, capture_output=True, text=True)
+
+        # Cleanup temporary SFX track if used
+        if sfx_track_path and sfx_track_path.exists():
+            try:
+                sfx_track_path.unlink()
+            except Exception:
+                pass
+
         if res.returncode != 0:
             logger.error(f"FFmpeg rendering failed: {res.stderr[-1000:]}")
             raise RuntimeError(f"FFmpeg rendering failed: {res.stderr[-400:]}")

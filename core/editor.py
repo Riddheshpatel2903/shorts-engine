@@ -6,6 +6,7 @@ corner facecam extraction, talking-head centering, and gameplay composition).
 """
 
 import os
+import re
 import subprocess
 import logging
 from pathlib import Path
@@ -64,7 +65,12 @@ class VideoEditor:
         layout_info: Dict[str, Any],
         subtitle_path: Optional[Path] = None,
         template: str = "AUTO",
-        superchat_card: Optional[Dict[str, Any]] = None
+        superchat_card: Optional[Dict[str, Any]] = None,
+        enable_motion_graphics: bool = True,
+        enable_progress_bar: bool = True,
+        clip_duration: float = 30.0,
+        hook_text: Optional[str] = None,
+        has_sfx_track: bool = False
     ) -> Tuple[str, str, str]:
         """
         Constructs the FFmpeg -filter_complex string for 1080x1920 9:16 vertical composition.
@@ -75,6 +81,10 @@ class VideoEditor:
         - STREAMER_SPLIT: Top Facecam + Bottom Gameplay
         - CINEMATIC_BLUR: 16:9 source centered vertically with blurred/darkened backdrop
         - FIT_LETTERBOX: 16:9 source centered on dark background with clean letterbox framing
+        Includes professional motion graphics:
+        - Retention Bottom Progress Bar (TikTok / Reels engagement standard)
+        - Glassmorphic Top Hook Card Banner
+        - High-Fidelity Audio SFX track mixer
         """
         classification = layout_info.get("classification", "GENERAL")
         facecam_box = layout_info.get("facecam_box")
@@ -296,17 +306,47 @@ class VideoEditor:
         # Add Subtitles if provided
         if subtitle_path and os.path.exists(subtitle_path):
             escaped_sub = escape_filter_path(str(subtitle_path))
-            sub_filter = f"{current_v}ass='{escaped_sub}'[v_out]"
+            sub_filter = f"{current_v}ass='{escaped_sub}'[v_sub]"
             filters.append(sub_filter)
-            final_v = "[v_out]"
-        else:
-            final_v = f"{current_v}"
+            current_v = "[v_sub]"
+
+        # Add Professional Motion Graphics (Retention Progress Bar & Floating Top Hook Card)
+        if enable_motion_graphics:
+            # 1. Top Glassmorphic Hook Banner (First 5 seconds)
+            if hook_text and hook_text.strip():
+                clean_hook = re.sub(r"[^\w\s\-\:\.\,\!]", "", hook_text).strip().upper()[:36]
+                if clean_hook:
+                    font_file = "C\\:/Windows/Fonts/arialbd.ttf" if Path("C:/Windows/Fonts/arialbd.ttf").exists() else ""
+                    font_opt = f"fontfile='{font_file}':" if font_file else ""
+                    hook_banner_filter = (
+                        f"{current_v}drawbox=x=60:y=180:w=960:h=120:color=black@0.85:t=fill:enable='between(t\\,0.2\\,5.5)',"
+                        f"drawbox=x=60:y=180:w=960:h=120:color=0x00E5FF@0.95:t=3:enable='between(t\\,0.2\\,5.5)',"
+                        f"drawbox=x=60:y=180:w=12:h=120:color=0x00E5FF@0.95:t=fill:enable='between(t\\,0.2\\,5.5)',"
+                        f"drawtext={font_opt}text='{clean_hook}':fontcolor=white:fontsize=46:x=(w-text_w)/2:y=218:enable='between(t\\,0.2\\,5.5)'[hook_v]"
+                    )
+                    filters.append(hook_banner_filter)
+                    current_v = "[hook_v]"
+
+            # 2. Bottom Glowing Retention Progress Bar (0 to 1080px across clip duration)
+            if enable_progress_bar and clip_duration > 0:
+                dur_val = max(1.0, float(clip_duration))
+                pbar_filter = (
+                    f"{current_v}drawbox=x=0:y={self.height-14}:w='min({self.width}\\,(t/{dur_val:.2f})*{self.width})':h=14:color=0x00E5FF@0.95:t=fill,"
+                    f"drawbox=x=0:y={self.height-16}:w='min({self.width}\\,(t/{dur_val:.2f})*{self.width})':h=2:color=white@0.85:t=fill[pbar_v]"
+                )
+                filters.append(pbar_filter)
+                current_v = "[pbar_v]"
+
+        final_v = f"{current_v}"
 
         # Combine all video filters
         v_pipeline = ";".join(filters)
 
-        # Audio pipeline (RULE A: zero drift + sample rate alignment + peak normalization)
-        a_pipeline = "[0:a]asetpts=PTS-STARTPTS,aresample=async=1:first_pts=0,volume=1.0[a_out]"
+        # Audio pipeline (Zero drift + sample rate alignment + SFX composite mix)
+        if has_sfx_track:
+            a_pipeline = "[0:a]volume=1.0,aresample=44100[a0];[1:a]volume=1.0,aresample=44100[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2,volume=1.0[a_out]"
+        else:
+            a_pipeline = "[0:a]asetpts=PTS-STARTPTS,aresample=async=1:first_pts=0,volume=1.0[a_out]"
 
         full_filter_complex = f"{v_pipeline};{a_pipeline}"
         return full_filter_complex, final_v, "[a_out]"

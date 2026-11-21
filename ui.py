@@ -687,6 +687,39 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                 else:
                     st.caption("*(Using AI Automatic Active-Speaker Tracking with Golden-Ratio Headroom)*")
 
+            # Motion Graphics & Sound Design Controls
+            st.markdown("##### 🎨 Motion Graphics & Sound Design")
+            col_mg1, col_mg2 = st.columns(2)
+            with col_mg1:
+                enable_mg = st.checkbox(
+                    "🔥 Motion Graphics (Top Hook Card + Progress Bar)",
+                    value=True,
+                    key=f"chk_mg_{clip_tag}",
+                    help="Adds a glassmorphic top Hook banner and glowing retention progress bar at the bottom."
+                )
+            with col_mg2:
+                enable_sfx = st.checkbox(
+                    "🔊 Viral Meme SFX (Vine Boom, Whoosh, Bruh, Ding)",
+                    value=True,
+                    key=f"chk_sfx_{clip_tag}",
+                    help="Intelligently syncs meme sound effects to punchlines, shocks, and hook moments."
+                )
+
+            if enable_sfx:
+                from core.sfx_engine import sfx_engine
+                is_comm = bool(selected_mom.get("category") == "COMEDY" or "funny" in str(selected_mom.get("why_viral", "")).lower())
+                preview_sfx = sfx_engine.detect_sfx_cues(
+                    transcript=data.get("transcript", {}),
+                    clip_start=start_val,
+                    clip_end=end_val,
+                    is_comedy=is_comm
+                )
+                if preview_sfx:
+                    sfx_badges = " ".join([f"<span class='pro-badge badge-purple'>{ev.get('name', 'SFX')} ({ev['rel_time']}s)</span>" for ev in preview_sfx])
+                    st.markdown(f"**Sound Design:** {sfx_badges}", unsafe_allow_html=True)
+                else:
+                    st.caption("*(Intro whoosh active)*")
+
             st.caption(f"💡 **Framing Note:** {clip_framing.get('reason', '')}")
 
             # Confirmation & Approval Button
@@ -695,7 +728,7 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
             approved = st.button("Approve & Render Short (1080x1920)", type="primary", use_container_width=True)
 
             if approved:
-                with st.spinner("Rendering 1080x1920 Short with animated subtitles..."):
+                with st.spinner("Rendering 1080x1920 Short with animated subtitles, motion graphics, and meme SFX..."):
                     subtitle_gen = SubtitleGenerator()
                     exporter = VideoExporter()
 
@@ -704,6 +737,7 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                         "end": end_val,
                         "duration": clip_len,
                         "hook_text": hook_banner_text,
+                        "is_comedy_or_reaction": is_comm if 'is_comm' in locals() else False,
                         "superchat_card": active_sc_item if burn_sc_card else None
                     }
 
@@ -738,7 +772,10 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                         layout_info=active_layout,
                         subtitle_path=ass_path if clip_words else None,
                         output_filename=out_fname,
-                        template=comp_mode
+                        template=comp_mode,
+                        enable_motion_graphics=enable_mg,
+                        enable_sfx=enable_sfx,
+                        transcript=transcript_data
                     )
 
                     # Generate social copy
@@ -998,7 +1035,7 @@ elif st.session_state.nav_tab in ["🎞️ Long Video Generator", "Long Video Ge
         st.divider()
         st.markdown("##### Broadcast Assembly & Polish Options")
 
-        col_opt1, col_opt2, col_opt3 = st.columns(3)
+        col_opt1, col_opt2 = st.columns([1.2, 1.8])
         with col_opt1:
             trans_opt = st.selectbox(
                 "Transition Between Chapters:",
@@ -1007,9 +1044,12 @@ elif st.session_state.nav_tab in ["🎞️ Long Video Generator", "Long Video Ge
                 key="long_trans_opt"
             )
         with col_opt2:
-            add_lower_thirds = st.checkbox("🏷️ Add On-Screen Chapter Title Cards", value=True, key="long_add_title_cards", help="Displays an aesthetic lower-third chapter title banner for the first 3.5 seconds of each segment.")
-        with col_opt3:
-            norm_audio = st.checkbox("🔊 EBU R128 Audio Normalization", value=True, key="long_norm_audio", help="Equalizes loudness across all clips to standard -16 LUFS broadcast level.")
+            c_sub1, c_sub2 = st.columns(2)
+            with c_sub1:
+                add_lower_thirds = st.checkbox("🏷️ Broadcast Title Cards", value=True, key="long_add_title_cards", help="Displays an aesthetic lower-third chapter title banner for the first 3.5 seconds of each segment.")
+                long_enable_sfx = st.checkbox("🔊 Transition Sound FX (Whoosh & Chimes)", value=True, key="long_enable_sfx", help="Mixes cinematic whooshes during transitions and chimes when chapter cards reveal.")
+            with c_sub2:
+                norm_audio = st.checkbox("🔊 EBU R128 Audio Normalization", value=True, key="long_norm_audio", help="Equalizes loudness across all clips to standard -16 LUFS broadcast level.")
 
         st.write("")
         if st.button("🎞️ Compile & Render 16:9 Long-Format Highlight Video", type="primary", use_container_width=True, key="btn_compile_long"):
@@ -1035,6 +1075,7 @@ elif st.session_state.nav_tab in ["🎞️ Long Video Generator", "Long Video Ge
                         transition_type=trans_opt,
                         add_lower_thirds=add_lower_thirds,
                         normalize_audio=norm_audio,
+                        enable_sfx=long_enable_sfx,
                         progress_callback=update_prog
                     )
 
