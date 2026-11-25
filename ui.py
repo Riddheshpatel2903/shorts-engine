@@ -315,6 +315,20 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
         st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
         st.markdown("<div class='pro-card-header'><span>Source Ingestion</span><span class='pro-badge badge-blue'>Step 1</span></div>", unsafe_allow_html=True)
 
+        genre_choice = st.selectbox(
+            "🎯 Viral Clipping Focus & Content Objective:",
+            options=[
+                "😂 Peak Humor, Banter & Roasts (Prioritize Comedy & Jokes)",
+                "🔥 Clutch Gameplay & High Hype Action (Squad Wipes & Flicks)",
+                "💬 Superchats, Controversy & Drama (Viewer Callouts)",
+                "💡 Wisdom, Best Advice & Education (Talking Head)",
+                "⚡ Auto-Discover Best Spikes (All Round Balanced)"
+            ],
+            index=0,
+            key="shorts_genre_objective",
+            help="Configures the AI moment detector and clip ranker to search for jokes, punchlines, or high-octane hype."
+        )
+
         c_in_type1, c_in_type2 = st.tabs(["Online Video Link (YouTube / Twitch / Kick / Reels)", "Upload Local Video / Direct File Path"])
 
         source_input_path = None
@@ -438,7 +452,6 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                 transcript = transcriber.transcribe(source_input_path, start_time=0.0, duration=scan_len)
 
                 detector = MomentDetector()
-                segments = detector.analyze_moments(source_input_path, transcript)
 
                 # Ultra-fast acoustic energy reaction peak scanner across ENTIRE video duration
                 try:
@@ -447,11 +460,44 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                     logger.debug(f"Acoustic peak scanner fallback: {e}")
                     acoustic_peaks = []
 
-                selector = ClipSelector(min_duration=20.0, max_duration=55.0, genre_focus="all")
+                # Multi-Peak Deep Transcription:
+                # If broadcast exceeds 600s and peaks are discovered in the later part of the video,
+                # transcribe focused 45s slices around them so they receive real words, karaoke subtitles, and humor scoring!
+                if dur > 600.0 and acoustic_peaks:
+                    existing_segments = transcript.get("segments", [])
+                    max_existing_t = max((s["end"] for s in existing_segments), default=0.0)
+                    for pk in acoustic_peaks:
+                        pk_start = float(pk["start"])
+                        if pk_start > max_existing_t:
+                            try:
+                                pk_slice = transcriber.transcribe(source_input_path, start_time=pk_start, duration=float(pk["duration"]))
+                                if pk_slice and pk_slice.get("segments"):
+                                    transcript["segments"].extend(pk_slice["segments"])
+                                    logger.info(f"Deep-transcribed peak slice at {pk_start:.1f}s ({len(pk_slice['segments'])} segments).")
+                            except Exception as pe:
+                                logger.debug(f"Slice transcription error at {pk_start}: {pe}")
+                    transcript["segments"].sort(key=lambda s: s["start"])
+
+                segments = detector.analyze_moments(source_input_path, transcript)
+
+                # Determine genre focus from user selection
+                chosen_genre_raw = st.session_state.get("shorts_genre_objective", "😂")
+                if "Humor" in chosen_genre_raw or "😂" in chosen_genre_raw:
+                    target_genre = "comedy"
+                elif "Clutch" in chosen_genre_raw or "🔥" in chosen_genre_raw:
+                    target_genre = "gaming"
+                elif "Superchat" in chosen_genre_raw or "💬" in chosen_genre_raw:
+                    target_genre = "superchat"
+                elif "Wisdom" in chosen_genre_raw or "💡" in chosen_genre_raw:
+                    target_genre = "advice"
+                else:
+                    target_genre = "all"
+
+                selector = ClipSelector(min_duration=20.0, max_duration=55.0, genre_focus=target_genre)
                 moments = selector.select_clips(
                     segments,
                     num_shorts=5,
-                    genre_focus="all",
+                    genre_focus=target_genre,
                     transcript=transcript,
                     extra_candidates=acoustic_peaks
                 )
@@ -689,6 +735,15 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
 
             # Motion Graphics & Sound Design Controls
             st.markdown("##### 🎨 Motion Graphics & Sound Design")
+            is_comm = bool(
+                selected_mom.get("is_comedy_or_reaction") or
+                selected_mom.get("category") == "COMEDY_HUMOR" or
+                selected_mom.get("comedy_score", 0) >= 45.0 or
+                "funny" in str(selected_mom.get("why_viral", "")).lower() or
+                "humor" in str(selected_mom.get("why_viral", "")).lower() or
+                "laughter" in str(selected_mom.get("why_viral", "")).lower()
+            )
+
             col_mg1, col_mg2 = st.columns(2)
             with col_mg1:
                 enable_mg = st.checkbox(
@@ -707,7 +762,6 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
 
             if enable_sfx:
                 from core.sfx_engine import sfx_engine
-                is_comm = bool(selected_mom.get("category") == "COMEDY" or "funny" in str(selected_mom.get("why_viral", "")).lower())
                 preview_sfx = sfx_engine.detect_sfx_cues(
                     transcript=data.get("transcript", {}),
                     clip_start=start_val,
@@ -719,6 +773,59 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                     st.markdown(f"**Sound Design:** {sfx_badges}", unsafe_allow_html=True)
                 else:
                     st.caption("*(Intro whoosh active)*")
+
+            # Interactive Audience Call-To-Action & Punchline Reaction Stamp
+            st.markdown("##### 💬 Interactive Audience Overlay & Reaction Stamp")
+            col_ia1, col_ia2 = st.columns([1.2, 0.8])
+            with col_ia1:
+                ia_options = [
+                    "None",
+                    "💀 WAIT FOR THE END...",
+                    "💬 W OR L? DROP A COMMENT 👇",
+                    "🔥 RATE THIS PLAY 1-10 👇",
+                    "😂 WHO IS AT FAULT HERE? 👇",
+                    "⚡ TAG A FRIEND WHO DOES THIS 🤣",
+                    "✍️ Custom Interactive Prompt..."
+                ]
+                default_ia_idx = 1 if is_comm else 0
+                ia_choice = st.selectbox(
+                    "Interactive Floating CTA Card:",
+                    options=ia_options,
+                    index=default_ia_idx,
+                    key=f"sel_ia_{clip_tag}",
+                    help="Displays a floating glassmorphic engagement card at the bottom to drive viral viewer comments and watch-time."
+                )
+                if ia_choice.startswith("✍️"):
+                    custom_ia = st.text_input("Enter Custom Interactive Prompt:", value="WHAT WOULD YOU DO? 👇", key=f"inp_custom_ia_{clip_tag}")
+                    final_ia_text = custom_ia.strip()
+                elif ia_choice == "None":
+                    final_ia_text = None
+                else:
+                    final_ia_text = ia_choice
+
+            with col_ia2:
+                badge_options = [
+                    "Auto (Based on Joke)",
+                    "💀 DEAD",
+                    "😂 NO WAY",
+                    "🤡 CAUGHT IN 4K",
+                    "🔥 VIOLATION",
+                    "👑 GOAT",
+                    "None"
+                ]
+                badge_choice = st.selectbox(
+                    "Punchline Meme Reaction Stamp:",
+                    options=badge_options,
+                    index=0 if is_comm else 6,
+                    key=f"sel_badge_{clip_tag}",
+                    help="Pops up a meme reaction stamp right when the punchline / funniest joke lands."
+                )
+                if badge_choice.startswith("Auto"):
+                    final_badge = "DEAD" if is_comm else None
+                elif badge_choice == "None":
+                    final_badge = None
+                else:
+                    final_badge = badge_choice.replace("💀", "").replace("😂", "").replace("🤡", "").replace("🔥", "").replace("👑", "").strip()
 
             st.caption(f"💡 **Framing Note:** {clip_framing.get('reason', '')}")
 
@@ -737,7 +844,10 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                         "end": end_val,
                         "duration": clip_len,
                         "hook_text": hook_banner_text,
-                        "is_comedy_or_reaction": is_comm if 'is_comm' in locals() else False,
+                        "interactive_overlay": final_ia_text if 'final_ia_text' in locals() else None,
+                        "punchline_badge": final_badge if 'final_badge' in locals() else None,
+                        "punchline_time": selected_mom.get("punchline_time"),
+                        "is_comedy_or_reaction": is_comm,
                         "superchat_card": active_sc_item if burn_sc_card else None
                     }
 

@@ -93,15 +93,6 @@ class ClipSelector:
         hook_geo = hook_seg.get("geopolitics_score", 0.0)
         hook_power = hook_seg.get("hook_score", 40.0)
 
-        # Weighted Category & Reaction Virality
-        window_comedy = (avg_comedy * 0.55) + (hook_comedy * 0.45)
-        window_rage = (avg_rage * 0.55) + (hook_rage * 0.45)
-        window_happy = (avg_happy * 0.55) + (hook_happy * 0.45)
-        window_shock = (avg_shock * 0.55) + (hook_shock * 0.45)
-        window_advice = (avg_advice * 0.55) + (hook_advice * 0.45)
-        window_motivation = (avg_motivation * 0.55) + (hook_motivation * 0.45)
-        window_geo = (avg_geo * 0.55) + (hook_geo * 0.45)
-
         # Inspect if window contains specific viral moments from segments
         seg_categories = [s.get("category", "") for s in segments_subset]
         has_superchat = "SUPERCHAT_CLAPBACK" in seg_categories
@@ -109,6 +100,24 @@ class ClipSelector:
         has_clutch = "GAMEPLAY_CLUTCH" in seg_categories
         has_gta6 = "GTA6_NEW_GAME" in seg_categories
         has_policy = "GEOPOLITICS_POLICY" in seg_categories
+
+        # Peak and setup-punchline virality for humor
+        max_comedy = max(c_scores) if c_scores else 0.0
+        has_punchline = any(s.get("is_joke_punchline") for s in segments_subset)
+        has_setup = any(s.get("is_joke_setup") for s in segments_subset)
+
+        # In comedy, peak punchline carries the moment rather than being diluted by setup segments
+        window_comedy = (max_comedy * 0.65) + (avg_comedy * 0.35)
+        if has_punchline and has_setup:
+            window_comedy = min(100.0, window_comedy + 14.0)
+
+        # Weighted Category & Reaction Virality
+        window_rage = (avg_rage * 0.55) + (hook_rage * 0.45)
+        window_happy = (avg_happy * 0.55) + (hook_happy * 0.45)
+        window_shock = (avg_shock * 0.55) + (hook_shock * 0.45)
+        window_advice = (avg_advice * 0.55) + (hook_advice * 0.45)
+        window_motivation = (avg_motivation * 0.55) + (hook_motivation * 0.45)
+        window_geo = (avg_geo * 0.55) + (hook_geo * 0.45)
 
         # Determine dominant category
         category_map = {
@@ -184,18 +193,19 @@ class ClipSelector:
             score = (window_happy * 0.70) + (avg_audio * 0.20) + (avg_general * 0.10) + boundary_bonus
         elif self.genre_focus in ["shock", "shocked", "hype", "disbelief"]:
             score = (window_shock * 0.70) + (avg_audio * 0.20) + (avg_general * 0.10) + boundary_bonus
-        elif self.genre_focus in ["comedy", "humor", "laugh", "laughing"]:
-            score = (window_comedy * 0.65) + (avg_audio * 0.15) + (avg_general * 0.20) + boundary_bonus
+        elif self.genre_focus in ["comedy", "humor", "funny", "laugh", "laughing", "roast", "jokes"]:
+            score = (window_comedy * 0.74) + (avg_audio * 0.16) + (avg_general * 0.10) + boundary_bonus
         elif self.genre_focus in ["advice", "education", "educational"]:
             score = (window_advice * 0.65) + (avg_cadence * 0.15) + (avg_general * 0.20) + boundary_bonus
         elif self.genre_focus in ["motivation", "motivational", "mindset"]:
             score = (window_motivation * 0.65) + (avg_cadence * 0.15) + (avg_general * 0.20) + boundary_bonus
         else:
-            # "all" / "auto": Multi-modal scoring blending genre power, acoustic peak surges, and hook velocity!
+            # "all" / "auto": Multi-modal scoring blending genre power, acoustic peak surges, hook velocity, and humor bonus!
             genre_power = max(category_map.values())
             energy_boost = (avg_audio - 50.0) * 0.45 if avg_audio > 50.0 else 0.0
             hook_boost = (hook_power - 40.0) * 0.35 if hook_power > 40.0 else 0.0
-            raw_score = (genre_power * 0.45) + (avg_audio * 0.25) + (avg_general * 0.15) + (avg_cadence * 0.10) + boundary_bonus + energy_boost + hook_boost
+            humor_boost = (window_comedy - 40.0) * 0.30 if window_comedy > 40.0 else 0.0
+            raw_score = (genre_power * 0.42) + (avg_audio * 0.22) + (avg_general * 0.14) + (avg_cadence * 0.10) + boundary_bonus + energy_boost + hook_boost + humor_boost
             score = min(99.0, max(50.0, raw_score))
 
         radar = {
@@ -204,6 +214,18 @@ class ClipSelector:
             "Hook Potency": min(100, int(max(40, hook_power))),
             "Viral Resonance": min(100, int(max(dominant_score, 60)))
         }
+
+        # Find punchline timestamp if present
+        punchline_time = None
+        for s in segments_subset:
+            if s.get("punchline_timestamp"):
+                punchline_time = s["punchline_timestamp"]
+                break
+        if not punchline_time and (dominant_cat == "COMEDY_HUMOR" or window_comedy >= 50.0):
+            # Default punchline to 65% mark of the candidate window
+            w_start = segments_subset[0]["start"]
+            w_end = segments_subset[-1]["end"]
+            punchline_time = round(w_start + (w_end - w_start) * 0.65, 2)
 
         return {
             "viral_score": min(round(score, 1), 100.0),
@@ -219,7 +241,11 @@ class ClipSelector:
             "category": dominant_cat,
             "category_label": cat_label,
             "why_viral": why_viral,
-            "radar": radar
+            "radar": radar,
+            "is_comedy_or_reaction": (dominant_cat in ["COMEDY_HUMOR", "STREAMER_RAGE", "STREAMER_SHOCK", "STREAMER_HAPPY"] or window_comedy >= 45.0),
+            "has_punchline": has_punchline,
+            "has_setup": has_setup,
+            "punchline_time": punchline_time
         }
 
     def select_clips(
@@ -296,7 +322,56 @@ class ClipSelector:
                             "text": full_text,
                             "hook_text": current_segments[0]["text"][:90],
                             "segments": current_segments,
-                            "clean_boundary": is_clean_end
+                            "clean_boundary": is_clean_end,
+                            "is_comedy_or_reaction": eval_data.get("is_comedy_or_reaction", False),
+                            "punchline_time": eval_data.get("punchline_time"),
+                            "has_punchline": eval_data.get("has_punchline", False),
+                            "has_setup": eval_data.get("has_setup", False)
+                        })
+
+        # Dedicated Joke-Anchored Window Generation:
+        # Ensures funny moments include the full conversational setup (10-18s) and laughter reaction (4-8s)
+        for k, seg in enumerate(analyzed_segments):
+            if seg.get("is_joke_punchline") or seg.get("comedy_score", 0) >= 45.0:
+                seg_dur = seg.get("duration", seg.get("end", 0.0) - seg.get("start", 0.0))
+                p_time = seg.get("punchline_timestamp") or (seg["start"] + seg_dur * 0.5)
+                target_start = max(0.0, p_time - 18.0)
+                target_end = min(analyzed_segments[-1]["end"], p_time + 8.0)
+                
+                joke_subsegs = [s for s in analyzed_segments if s["end"] >= target_start and s["start"] <= target_end]
+                if joke_subsegs:
+                    j_start = joke_subsegs[0]["start"]
+                    j_end = joke_subsegs[-1]["end"]
+                    j_dur = j_end - j_start
+                    if self.min_duration <= j_dur <= self.max_duration:
+                        eval_data = self._evaluate_candidate_window(joke_subsegs)
+                        full_text = " ".join(s["text"] for s in joke_subsegs)
+                        is_clean_end = self._ends_sentence(joke_subsegs[-1]["text"])
+                        candidates.append({
+                            "start": round(j_start, 2),
+                            "end": round(j_end, 2),
+                            "duration": round(j_dur, 2),
+                            "viral_score": min(100.0, eval_data["viral_score"] + 6.0),
+                            "comedy_score": eval_data["comedy_score"],
+                            "rage_score": eval_data.get("rage_score", 0.0),
+                            "happy_score": eval_data.get("happy_score", 0.0),
+                            "shock_score": eval_data.get("shock_score", 0.0),
+                            "advice_score": eval_data["advice_score"],
+                            "motivation_score": eval_data["motivation_score"],
+                            "audio_score": eval_data.get("audio_score", 50.0),
+                            "wpm": eval_data.get("wpm", 130.0),
+                            "category": "COMEDY_HUMOR",
+                            "category_label": "😂 Laughing & Comedy Moment",
+                            "why_viral": f"Complete joke setup and punchline delivery ({eval_data['comedy_score']:.0f}% humor index).",
+                            "radar": eval_data["radar"],
+                            "text": full_text,
+                            "hook_text": joke_subsegs[0]["text"][:90],
+                            "segments": joke_subsegs,
+                            "clean_boundary": is_clean_end,
+                            "is_comedy_or_reaction": True,
+                            "punchline_time": p_time,
+                            "has_punchline": True,
+                            "has_setup": True
                         })
 
         if not candidates:

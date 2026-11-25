@@ -146,6 +146,15 @@ class VideoExporter:
                 logger.warning(f"SFX track generation error: {e}")
                 sfx_track_path = None
 
+        p_time_raw = clip_info.get("punchline_time")
+        rel_p_time = None
+        if p_time_raw is not None:
+            try:
+                p_val = float(p_time_raw)
+                rel_p_time = (p_val - start_t) if p_val >= start_t else p_val
+            except Exception:
+                rel_p_time = None
+
         filter_complex, v_map, a_map = self.editor.build_filter_graph(
             layout_info,
             subtitle_path=subtitle_path,
@@ -155,6 +164,9 @@ class VideoExporter:
             enable_progress_bar=enable_motion_graphics,
             clip_duration=duration,
             hook_text=clip_info.get("hook_text"),
+            interactive_overlay=clip_info.get("interactive_overlay"),
+            punchline_badge=clip_info.get("punchline_badge"),
+            punchline_time=rel_p_time,
             has_sfx_track=(sfx_track_path is not None and sfx_track_path.exists())
         )
 

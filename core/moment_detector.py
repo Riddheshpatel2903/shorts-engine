@@ -21,18 +21,23 @@ from config import PROCESSING_DIR
 
 logger = logging.getLogger("ViralShortsEngine.MomentDetector")
 
-# 1. COMEDY & LAUGHTER PATTERNS
+# 1. COMEDY & LAUGHTER PATTERNS (Modern Internet Humor, Streamer Banter, Hinglish Roasts & Slang)
 COMEDY_PATTERNS = [
-    # Laugh tokens & onomatopoeia
-    r"\b(ha(ha)+|he(he)+|lol|lmao|rofl|lmfao|haha|hehe|ahah|pfft|xd)\b",
-    r"\[laughter\]|\(laughter\)|\*laughs\*|\[chuckle\]|\[giggle\]|\[snicker\]",
-    # Humorous reactions & slang
+    # Laugh tokens, onomatopoeia & wheezing
+    r"\b(ha(ha)+|he(he)+|lol|lmao|rofl|lmfao|haha|hehe|ahah|pfft|xd|wheeze|wheezing|cackle|cackling|giggle|snicker)\b",
+    r"\[laughter\]|\(laughter\)|\*laughs\*|\[chuckle\]|\[giggle\]|\[snicker\]|\[wheezing\]",
+    # Humorous reactions, creator slang & Twitch/TikTok viral memes
     r"\b(i can'?t breathe|dying laughing|deadass|bro is wilding|outta pocket|funniest thing|cracking up|comedy gold)\b",
     r"\b(what is he doing|bro thought|look at him|no shot bro|he got cooked|he actually did that|that'?s foul|bro fell)\b",
     r"\b(literally crying|i am dead|can'?t make this up|joke of the year|roast|clowning|ridiculous|unhinged|goofy)\b",
     r"\b(the dumbest thing|the funniest|are you kidding me|no way in hell|bro really said|wildest thing)\b",
-    # Hindi / Hinglish comedy & roast
-    r"\b(bhai\s*kya\s*tha\s*ye|are\s*bhai\s*bhai|khatam|tata\s*bye\s*bye|gaya\s*gaya|kya\s*goofy\s*hai|chutiya|roast\s*kar\s*diya|cooked\s*hai|scene\s*ho\s*gaya|beizzatti|kya\s*scene\s*hai|haste\s*haste|lotpot|pagal\s*hai\s*kya|jalwa\s*hai)\b"
+    r"\b(who let him cook|bro got humbled|emotional damage|caught in 4k|down bad|gigachad|skill issue|npc behavior)\b",
+    r"\b(ain'?t no way|bro fell off|ratio|main character syndrome|bombastic side eye|copium|hopium|he really tried it)\b",
+    r"\b(secondhand embarrassment|cringe|bro is tweaking|lost his mind|bro took it personally|violating|violation)\b",
+    r"\b(the audacity|pure comedy|instant regret|comedic timing|punchline|hear me out|wait for it)\b",
+    # Hindi / Hinglish comedy, standup & streamer roasts (Tanmay, Samay, Carry, Zakir, Mortal)
+    r"\b(bhai\s*kya\s*tha\s*ye|are\s*bhai\s*bhai|khatam|tata\s*bye\s*bye|gaya\s*gaya|kya\s*goofy\s*hai|chutiya|roast\s*kar\s*diya|cooked\s*hai|scene\s*ho\s*gaya|beizzatti|kya\s*scene\s*hai|haste\s*haste|lotpot|pagal\s*hai\s*kya|jalwa\s*hai)\b",
+    r"\b(gajab\s*beizzati\s*hai|waah\s*kya\s*acting\s*hai|acting\s*ke\s*50\s*rupay|kya\s*bakwaas\s*hai|hasna\s*mana\s*hai|hasi\s*nahi\s*ruk\s*rahi|pet\s*dukh\s*gaya|moye\s*moye|yeh\s*toh\s*dhoti\s*khol\s*raha\s*hai|aukaat\s*dikhadi|dhulai\s*kar\s*di|ruk\s*ja\s*bhai|bawaal\s*cheez\s*hai|dimag\s*kharab\s*bhai)\b"
 ]
 
 # 2. BEST ADVICE & EDUCATIONAL PATTERNS
@@ -368,11 +373,18 @@ class MomentDetector:
 
         candidates = []
         for idx, (t_peak, rms_val) in enumerate(selected_peaks, start=1):
-            clip_start = max(0.0, round(t_peak - 5.0, 1))
+            clip_start = max(0.0, round(t_peak - 8.0, 1))
             clip_end = round(clip_start + window_duration, 1)
             
-            cat = "STREAMER_RAGE" if (idx % 2 == 1) else "STREAMER_SHOCK"
-            label = "🤬 Streamer Outburst / Peak" if cat == "STREAMER_RAGE" else "😱 Shocked & Hype Reaction"
+            if idx % 3 == 1:
+                cat = "COMEDY_HUMOR"
+                label = "😂 Hilarious Laughter & Reaction Peak"
+            elif idx % 3 == 2:
+                cat = "STREAMER_RAGE"
+                label = "🤬 Streamer Outburst / Peak"
+            else:
+                cat = "STREAMER_SHOCK"
+                label = "😱 Shocked & Hype Reaction"
             
             m = int(t_peak // 60)
             s = int(t_peak % 60)
@@ -385,10 +397,10 @@ class MomentDetector:
                 "category_label": f"{label} #{idx}",
                 "hook_text": f"High acoustic reaction peak detected at {m}m {s:02d}s",
                 "why_viral": f"Peak acoustic reaction spike in stream ({rms_val:.3f} RMS). Emotional shouting / laughter climax.",
-                "rage_score": 88.0,
+                "rage_score": 88.0 if cat == "STREAMER_RAGE" else 60.0,
                 "happy_score": 75.0,
-                "shock_score": 92.0,
-                "comedy_score": 80.0,
+                "shock_score": 92.0 if cat == "STREAMER_SHOCK" else 70.0,
+                "comedy_score": 92.0 if cat == "COMEDY_HUMOR" else 75.0,
                 "advice_score": 10.0,
                 "motivation_score": 15.0,
                 "text": f"[High-energy acoustic reaction spike ({rms_val:.4f} RMS) captured at {m}m {s:02d}s]"
@@ -404,13 +416,16 @@ class MomentDetector:
         """
         text_lower = text.lower()
 
-        # 1. Comedy Score
+        # 1. Comedy Score (Humor, banter, jokes & laughter tokens)
         comedy_matches = 0
         for pattern in COMEDY_PATTERNS:
             matches = re.findall(pattern, text_lower)
             comedy_matches += len(matches)
-        laugh_count = len(re.findall(r"(ha(ha)+|he(he)+|lol|lmao|rofl|\[laughter\])", text_lower))
-        comedy_score = min(100.0, (comedy_matches * 22.0) + (laugh_count * 30.0))
+        laugh_count = len(re.findall(r"(ha(ha)+|he(he)+|lol|lmao|rofl|lmfao|\[laughter\]|wheez|cackle)", text_lower))
+        if comedy_matches > 0 or laugh_count > 0:
+            comedy_score = min(100.0, 38.0 + (comedy_matches * 24.0) + (laugh_count * 28.0))
+        else:
+            comedy_score = 0.0
 
         # 2. Streamer Reaction: Rage / Angry Outburst
         rage_matches = 0
@@ -668,8 +683,25 @@ class MomentDetector:
                 "audio_score": round(audio_score, 1),
                 "cadence_score": round(cadence_score, 1),
                 "wpm": round(wpm, 1),
-                "segment_score": round(composite_score, 1)
+                "segment_score": round(composite_score, 1),
+                "is_joke_punchline": False,
+                "is_joke_setup": False,
+                "punchline_timestamp": None
             })
+
+        # Second Pass: Setup & Punchline cadence detection
+        # If segment k has high comedy or laughter, mark segment k as punchline
+        # and segment(s) k-1 as joke setup so clips never cut off the joke premise!
+        n_segs = len(analyzed_segments)
+        for idx in range(n_segs):
+            curr = analyzed_segments[idx]
+            if curr["comedy_score"] >= 45.0 or curr["category"] == "COMEDY_HUMOR":
+                curr["is_joke_punchline"] = True
+                curr["punchline_timestamp"] = round(curr["start"] + (curr["duration"] * 0.45), 2)
+                if idx > 0:
+                    analyzed_segments[idx - 1]["is_joke_setup"] = True
+                if idx > 1 and analyzed_segments[idx - 1]["duration"] < 3.5:
+                    analyzed_segments[idx - 2]["is_joke_setup"] = True
 
         return analyzed_segments
 

@@ -70,6 +70,9 @@ class VideoEditor:
         enable_progress_bar: bool = True,
         clip_duration: float = 30.0,
         hook_text: Optional[str] = None,
+        interactive_overlay: Optional[str] = None,
+        punchline_badge: Optional[str] = None,
+        punchline_time: Optional[float] = None,
         has_sfx_track: bool = False
     ) -> Tuple[str, str, str]:
         """
@@ -336,6 +339,37 @@ class VideoEditor:
                 )
                 filters.append(pbar_filter)
                 current_v = "[pbar_v]"
+
+            # 3. Interactive Call-To-Action Overlay Card (TikTok / Reels engagement sticker)
+            if interactive_overlay and interactive_overlay.strip():
+                clean_interactive = re.sub(r"[^\w\s\-\:\.\,\!\?\#\<\>\@\']", "", interactive_overlay).strip().upper()[:44]
+                if clean_interactive:
+                    font_file = "C\\:/Windows/Fonts/seguisb.ttf" if Path("C:/Windows/Fonts/seguisb.ttf").exists() else ("C\\:/Windows/Fonts/arialbd.ttf" if Path("C:/Windows/Fonts/arialbd.ttf").exists() else "")
+                    font_opt = f"fontfile='{font_file}':" if font_file else ""
+                    interactive_filter = (
+                        f"{current_v}drawbox=x=150:y=1560:w=780:h=96:color=black@0.85:t=fill:enable='gte(t\\,1.0)',"
+                        f"drawbox=x=150:y=1560:w=780:h=96:color=0xFF007F@0.90:t=3:enable='gte(t\\,1.0)',"
+                        f"drawbox=x=150:y=1560:w=12:h=96:color=0xFF007F@0.95:t=fill:enable='gte(t\\,1.0)',"
+                        f"drawtext={font_opt}text='{clean_interactive}':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=1592:enable='gte(t\\,1.0)'[interact_v]"
+                    )
+                    filters.append(interactive_filter)
+                    current_v = "[interact_v]"
+
+            # 4. Punchline Meme Reaction Badge Pop-up (Flashes during comedic punchline delivery)
+            if punchline_badge and punchline_badge.strip():
+                clean_badge = re.sub(r"[^\w\s\-\:\.\,\!]", "", punchline_badge).strip().upper()[:24]
+                if clean_badge:
+                    font_file = "C\\:/Windows/Fonts/seguibl.ttf" if Path("C:/Windows/Fonts/seguibl.ttf").exists() else ("C\\:/Windows/Fonts/arialbd.ttf" if Path("C:/Windows/Fonts/arialbd.ttf").exists() else "")
+                    font_opt = f"fontfile='{font_file}':" if font_file else ""
+                    p_start = max(0.5, float(punchline_time) - 0.2) if punchline_time is not None else max(0.5, clip_duration * 0.62)
+                    p_end = min(clip_duration, p_start + 2.6)
+                    punch_filter = (
+                        f"{current_v}drawbox=x=270:y=460:w=540:h=90:color=black@0.90:t=fill:enable='between(t\\,{p_start:.2f}\\,{p_end:.2f})',"
+                        f"drawbox=x=270:y=460:w=540:h=90:color=0xFFD700@0.95:t=4:enable='between(t\\,{p_start:.2f}\\,{p_end:.2f})',"
+                        f"drawtext={font_opt}text='[ {clean_badge} ]':fontcolor=0xFFD700:fontsize=44:x=(w-text_w)/2:y=486:enable='between(t\\,{p_start:.2f}\\,{p_end:.2f})'[punch_v]"
+                    )
+                    filters.append(punch_filter)
+                    current_v = "[punch_v]"
 
         final_v = f"{current_v}"
 
