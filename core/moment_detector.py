@@ -561,14 +561,22 @@ class MomentDetector:
             "policy": round(policy_score, 1)
         }
 
-    def analyze_moments(self, video_path: str, transcript_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def analyze_moments(
+        self,
+        video_path: str,
+        transcript_data: Dict[str, Any],
+        trend_profile: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
         """
         Evaluates each segment against genre-specific patterns, acoustic energy surges,
-        and speech delivery cadence.
+        speech delivery cadence, and social media viral trend alignment.
         """
         segments = transcript_data.get("segments", [])
         if not segments:
             return []
+
+        # Lazy import trend scout if trend_profile not explicitly passed
+        from core.social_trend_scout import social_trend_scout
 
         temp_dir = PROCESSING_DIR
         temp_dir.mkdir(parents=True, exist_ok=True)
@@ -707,12 +715,19 @@ class MomentDetector:
             )
             silence_pen = 0.0 if audio_score >= 12.0 else -35.0
 
-            composite_score = (
+            # Social Media Trend Resonance (Matches active online debates about this creator)
+            trend_res = social_trend_scout.calculate_trend_resonance(text, trend_profile) if trend_profile else {"resonance_score": 0.0, "is_viral_trend_match": False, "matched_debate": None}
+            trend_boost = trend_res["resonance_score"] if trend_res["is_viral_trend_match"] else 0.0
+            if trend_res["is_viral_trend_match"] and trend_res.get("matched_debate"):
+                category_label = f"🔥 Viral Trend: {trend_res['matched_debate'][:35]}"
+
+            composite_score = min(100.0, (
                 semantic_drive * 0.85 +
                 cadence_score * 0.10 +
                 min(audio_score, 70.0) * 0.05 +
-                silence_pen
-            )
+                silence_pen +
+                trend_boost
+            ))
 
             analyzed_segments.append({
                 "id": seg["id"],
@@ -723,6 +738,8 @@ class MomentDetector:
                 "words": words,
                 "category": top_category,
                 "category_label": category_label,
+                "trend_matched_debate": trend_res.get("matched_debate"),
+                "is_viral_trend_match": trend_res.get("is_viral_trend_match", False),
                 "comedy_score": cat_scores["comedy"],
                 "controversy_score": cat_scores["controversy"],
                 "roast_score": cat_scores["roast"],
@@ -736,6 +753,7 @@ class MomentDetector:
                 "cadence_score": round(cadence_score, 1),
                 "wpm": round(wpm, 1),
                 "segment_score": round(composite_score, 1),
+                "composite_score": round(composite_score, 1),
                 "is_joke_punchline": False,
                 "is_joke_setup": False,
                 "punchline_timestamp": None

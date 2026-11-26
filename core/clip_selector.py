@@ -275,12 +275,13 @@ class ClipSelector:
         overlap_threshold: float = 0.35,
         genre_focus: Optional[str] = None,
         transcript: Optional[Dict[str, Any]] = None,
-        extra_candidates: Optional[List[Dict[str, Any]]] = None
+        extra_candidates: Optional[List[Dict[str, Any]]] = None,
+        trend_profile: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """
         Generates candidate clips across the video and ranks top non-overlapping clips
         matching the desired viral genre (Comedy, Advice, Motivation, or Auto).
-        Integrates audio reaction peaks and crowd spikes.
+        Integrates audio reaction peaks, social trend resonance, and distilled controversy sparks.
         """
         if genre_focus:
             self.genre_focus = genre_focus.lower()
@@ -492,6 +493,23 @@ class ClipSelector:
                 "segments": analyzed_segments,
                 "clean_boundary": True
             }]
+
+        # Boost candidates that directly match the creator's active social media controversies
+        if trend_profile:
+            try:
+                from core.social_trend_scout import social_trend_scout
+                for cand in candidates:
+                    c_text = cand.get("text", "")
+                    t_res = social_trend_scout.calculate_trend_resonance(c_text, trend_profile)
+                    if t_res["is_viral_trend_match"]:
+                        cand["viral_score"] = min(100.0, cand["viral_score"] + t_res["resonance_score"] * 0.5)
+                        cand["is_viral_trend_match"] = True
+                        if t_res.get("matched_debate"):
+                            cand["trend_matched_debate"] = t_res["matched_debate"]
+                            cand["category_label"] = f"🔥 Viral Trend: {t_res['matched_debate'][:35]}"
+                            cand["why_viral"] = f"Directly addresses active social media controversy ('{t_res['matched_debate'][:50]}')."
+            except Exception as e:
+                logger.debug(f"Trend candidate boost error: {e}")
 
         # Sort candidates by viral score descending
         candidates.sort(key=lambda c: c["viral_score"], reverse=True)

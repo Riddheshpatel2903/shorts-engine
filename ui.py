@@ -401,16 +401,26 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                 do_inspect = st.button("🔍 Check Stream Info", use_container_width=True, key="btn_shorts_inspect")
 
             if do_inspect and url_val and url_val.strip():
-                with st.spinner("Checking live broadcast status..."):
+                with st.spinner("Checking live broadcast status & scouting active creator debates..."):
                     try:
                         downloader = VideoDownloader()
                         info_check = downloader.get_info(url_val.strip())
+                        from core.social_trend_scout import social_trend_scout
+                        trend_info = social_trend_scout.scout_creator_trends(info_check)
                         live_badge = "🔴 LIVE BROADCAST NOW" if info_check.get("is_live") else "📼 Pre-recorded / VOD"
                         st.info(
                             f"**{live_badge}** | **Title:** `{info_check.get('title')[:60]}` | "
-                            f"**Streamer:** `{info_check.get('uploader')}` | "
+                            f"**Creator:** `{trend_info.get('creator') or info_check.get('uploader')}` | "
                             f"**Duration:** `{format_time(info_check.get('duration', 0))}`"
                         )
+                        if trend_info.get("hot_debates"):
+                            st.markdown(
+                                f"🌐 **Social Media Trend Radar Active:** "
+                                f"Scouted {len(trend_info['hot_debates'])} active controversies & debates for **{trend_info['creator']}**! "
+                                f"Clipping will automatically match these trending topics:"
+                            )
+                            for d_item in trend_info["hot_debates"][:3]:
+                                st.caption(f"🔥 *{d_item}*")
                     except Exception as e:
                         st.error(f"Could not inspect stream URL: {e}")
 
@@ -507,7 +517,13 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                                 logger.debug(f"Slice transcription error at {pk_start}: {pe}")
                     transcript["segments"].sort(key=lambda s: s["start"])
 
-                segments = detector.analyze_moments(source_input_path, transcript)
+                from core.social_trend_scout import social_trend_scout
+                meta_payload = source_url_target or {"title": Path(source_input_path).stem}
+                trend_profile = social_trend_scout.scout_creator_trends(meta_payload)
+                if trend_profile.get("hot_debates"):
+                    st.toast(f"🌐 Trend Radar: Targeting active debates for {trend_profile['creator']}!", icon="🔥")
+
+                segments = detector.analyze_moments(source_input_path, transcript, trend_profile=trend_profile)
 
                 # Determine genre focus from user selection
                 chosen_genre_raw = st.session_state.get("shorts_genre_objective", "🔥")
@@ -540,7 +556,8 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                     num_shorts=target_count,
                     genre_focus=target_genre,
                     transcript=transcript,
-                    extra_candidates=ai_moments or acoustic_peaks
+                    extra_candidates=ai_moments or acoustic_peaks,
+                    trend_profile=trend_profile
                 )
 
                 is_auto_mode = st.session_state.get("shorts_workflow_mode", "🚀").startswith("🚀")
