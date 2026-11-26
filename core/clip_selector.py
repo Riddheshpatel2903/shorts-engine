@@ -301,6 +301,18 @@ class ClipSelector:
         if not analyzed_segments and not candidates:
             logger.warning("No analyzed segments or peaks provided to ClipSelector.")
             return []
+
+        # Incorporate Learned Viral Distillation Candidates (No intro fluff, pure controversy meat)
+        try:
+            from core.viral_distillation_engine import viral_distillation
+            distilled_candidates = viral_distillation.extract_controversy_payload_windows(
+                analyzed_segments, min_duration=self.min_duration, max_duration=self.max_duration
+            )
+            for dc in distilled_candidates:
+                candidates.append(dc)
+        except Exception as e:
+            logger.debug(f"Distilled candidate integration error: {e}")
+
         n_segs = len(analyzed_segments)
 
         for i in range(n_segs):

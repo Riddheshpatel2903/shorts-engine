@@ -336,7 +336,7 @@ class PlaywrightPublisher:
             launch_kwargs = {
                 "user_data_dir": str(profile_dir),
                 "headless": False,  # Visible browser ensures Instagram video encoder and modal render without crashing
-                "viewport": {"width": 1280, "height": 800},
+                "viewport": {"width": 1440, "height": 960},
                 "ignore_default_args": ["--enable-automation"],
                 "args": [
                     "--disable-blink-features=AutomationControlled",
@@ -357,14 +357,32 @@ class PlaywrightPublisher:
                 context.add_init_script(STEALTH_SCRIPT)
                 page = context.pages[0] if context.pages else context.new_page()
                 page.goto("https://www.instagram.com/", timeout=60000)
-                page.wait_for_load_state("networkidle")
+                try:
+                    page.wait_for_load_state("domcontentloaded", timeout=15000)
+                except Exception:
+                    pass
 
-                # Dismiss any 'Save login info' or 'Turn on notifications' popups if present
-                for dismiss_text in ["Not Now", "Cancel"]:
+                time_sleep = page.wait_for_timeout
+                time_sleep(2000)
+
+                # Dismiss any 'Save login info', 'Turn on notifications', or cookie prompts
+                dismiss_selectors = [
+                    "button:has-text('Not Now')",
+                    "button:has-text('Not now')",
+                    "button:has-text('Cancel')",
+                    "button:has-text('Decline optional cookies')",
+                    "button:has-text('Only allow essential cookies')",
+                    "button:has-text('Allow essential and optional cookies')",
+                    "button:has-text('Allow all cookies')",
+                    "button:has-text('Close')",
+                    "[aria-label='Close']"
+                ]
+                for d_sel in dismiss_selectors:
                     try:
-                        d_btn = page.locator(f"button:has-text('{dismiss_text}')").first
-                        if d_btn.is_visible(timeout=2000):
+                        d_btn = page.locator(d_sel).first
+                        if d_btn.is_visible(timeout=1000):
                             d_btn.click()
+                            time_sleep(500)
                     except Exception:
                         pass
 
@@ -376,18 +394,57 @@ class PlaywrightPublisher:
                         "error": "Instagram session expired. Please click 'Open Instagram Login Window' to sign in."
                     }
 
-                time_sleep = page.wait_for_timeout
+                # Ensure navigation bar or primary app icons are loaded
+                try:
+                    page.wait_for_selector("svg[aria-label='Home'], svg[aria-label='Instagram'], nav, div[role='navigation']", timeout=20000)
+                except Exception:
+                    logger.debug("Instagram navigation container wait completed or timed out.")
 
-                # 1. Click Create button
-                create_nav = page.locator("svg[aria-label='New post'], [aria-label='Create'], span:has-text('Create')").first
-                create_nav.click(timeout=15000)
-                time_sleep(1500)
+                # 1. Click Create button (Check comprehensive desktop and mobile selectors)
+                create_selectors = [
+                    "svg[aria-label='New post']",
+                    "svg[aria-label='New Post']",
+                    "svg[aria-label='Create']",
+                    "svg[aria-label='Post']",
+                    "[aria-label='New post']",
+                    "[aria-label='New Post']",
+                    "[aria-label='Create']",
+                    "a[href='#']:has-text('Create')",
+                    "div[role='button']:has-text('Create')",
+                    "span:text-is('Create')",
+                    "span:has-text('Create')",
+                    "a:has-text('Create')"
+                ]
 
-                # If "Post" sub-option appears
-                post_sub = page.locator("span:has-text('Post')").first
-                if post_sub.is_visible():
-                    post_sub.click()
+                create_clicked = False
+                for c_sel in create_selectors:
+                    try:
+                        loc = page.locator(c_sel).first
+                        if loc.is_visible(timeout=1500):
+                            loc.click()
+                            create_clicked = True
+                            logger.info(f"Clicked Instagram Create button via selector: {c_sel}")
+                            time_sleep(1500)
+                            break
+                    except Exception:
+                        continue
+
+                if not create_clicked:
+                    # Final fallback: click via combined selector with generous timeout
+                    fallback_loc = page.locator(", ".join(create_selectors)).first
+                    fallback_loc.click(timeout=20000)
                     time_sleep(1500)
+
+                # If "Post" sub-option appears in the create menu
+                for post_sel in ["span:text-is('Post')", "span:has-text('Post')", "div[role='button']:has-text('Post')"]:
+                    try:
+                        post_sub = page.locator(post_sel).first
+                        if post_sub.is_visible(timeout=1500):
+                            post_sub.click()
+                            time_sleep(1500)
+                            break
+                    except Exception:
+                        pass
 
                 # 2. Attach File
                 file_input = page.locator("input[type='file']").first

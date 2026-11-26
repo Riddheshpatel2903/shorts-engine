@@ -250,6 +250,9 @@ class VideoExporter:
         logger.info(f"Export verified successfully: {out_path} ({validation['size_mb']} MB)")
         return out_path
 
+    # Convenient alias for render_clip
+    export_short = render_clip
+
     def batch_render_shorts(
         self,
         source_path: str,
@@ -319,7 +322,7 @@ class VideoExporter:
 
             out_name = f"short_{clean_stem}_{idx:02d}_{int(s_t)}s.mp4"
             try:
-                rendered_path = self.export_short(
+                rendered_path = self.render_clip(
                     source_path=source_path,
                     clip_info=clip_info,
                     layout_info=layout_info,

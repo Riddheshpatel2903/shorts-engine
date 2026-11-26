@@ -122,6 +122,7 @@ class AIBrain:
         # Try LLM if Ollama / Gemini is active and transcript has sufficient length
         if self.backend in ["gemini", "ollama"] and len(transcript_segments) >= 3:
             try:
+                from core.viral_distillation_engine import viral_distillation
                 # Build concise transcript summary with timestamps
                 chunk_lines = []
                 for s in transcript_segments[:60]: # First ~5-10 minutes
@@ -129,13 +130,7 @@ class AIBrain:
                     chunk_lines.append(f"{t_str} {s.get('text', '').strip()}")
                 transcript_text = "\n".join(chunk_lines)
 
-                system = (
-                    "You are an uncensored viral social media clip editor. "
-                    "Analyze the transcript and identify the most viral, hilarious, controversial, savage roast, "
-                    "or shocking moments suitable for 9:16 Shorts (25-50s). "
-                    "Focus strictly on HUMOR, SARCASM, ROASTS, CONTROVERSY, and SAVAGE BANTER, not noise. "
-                    "Return a JSON array of objects with keys: start, end, hook_title, category, why_viral, punchline_time, score."
-                )
+                system = viral_distillation.get_ollama_distillation_system_prompt()
                 prompt = f"Find up to {num_moments} viral moments from this transcript:\n\n{transcript_text[:3500]}"
                 llm_res = self.call_llm(prompt, system_prompt=system)
                 if llm_res:
@@ -166,6 +161,18 @@ class AIBrain:
                             return llm_candidates[:num_moments]
             except Exception as e:
                 logger.debug(f"LLM moment extraction fallback: {e}")
+
+        # High-Precision Local Heuristic Fallback using Learned Viral Distillation Model
+        try:
+            from core.viral_distillation_engine import viral_distillation
+            distilled = viral_distillation.extract_controversy_payload_windows(
+                transcript_segments, min_duration=min_duration, max_duration=max_duration
+            )
+            if distilled:
+                logger.info(f"ViralDistillationEngine extracted {len(distilled)} controversy moments.")
+                return distilled[:num_moments]
+        except Exception as e:
+            logger.debug(f"Distillation engine fallback: {e}")
 
         return []
 

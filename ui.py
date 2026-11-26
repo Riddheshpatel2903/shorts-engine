@@ -571,14 +571,27 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                         progress_callback=batch_progress_ui
                     )
 
-                    status_box.update(label=f"🎉 Successfully Auto-Generated {len(batch_rendered)} Viral Shorts!", state="complete", expanded=False)
-                    st.session_state.batch_generation_results = {
-                        "source_title": source_url_target.get("title", "Video"),
-                        "source_path": source_input_path,
-                        "results": batch_rendered
-                    }
-                    st.session_state.analysis_result = None
-                    st.rerun()
+                    if batch_rendered:
+                        status_box.update(label=f"🎉 Successfully Auto-Generated {len(batch_rendered)} Viral Shorts!", state="complete", expanded=False)
+                        st.session_state.batch_generation_results = {
+                            "source_title": source_url_target.get("title", "Video"),
+                            "source_path": source_input_path,
+                            "results": batch_rendered
+                        }
+                        st.session_state.analysis_result = None
+                        st.rerun()
+                    else:
+                        status_box.update(label="⚠️ No shorts could be rendered from the selected clips.", state="error", expanded=True)
+                        st.error("Batch rendering did not complete. Switching to review mode so you can preview candidates.")
+                        st.session_state.analysis_result = {
+                            "source_path": source_input_path,
+                            "metadata": source_url_target,
+                            "analysis": analysis,
+                            "transcript": transcript,
+                            "moments": moments,
+                            "duration": dur
+                        }
+                        st.rerun()
 
                 else:
                     st.session_state.analysis_result = {
