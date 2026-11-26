@@ -250,6 +250,115 @@ class VideoExporter:
         logger.info(f"Export verified successfully: {out_path} ({validation['size_mb']} MB)")
         return out_path
 
+    def batch_render_shorts(
+        self,
+        source_path: str,
+        clips: List[Dict[str, Any]],
+        layout_info: Dict[str, Any],
+        transcript_data: Dict[str, Any],
+        style_preset: str = "hormozi",
+        enable_motion_graphics: bool = True,
+        enable_sfx: bool = True,
+        interactive_overlay: Optional[str] = "💀 WAIT FOR THE END...",
+        punchline_badge: Optional[str] = "DEAD",
+        progress_callback: Optional[Any] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Renders a full batch of viral shorts (up to 15+) automatically,
+        saving deliverables directly into workspace/output/ and library.
+        Returns list of results with file paths, metadata, and viral scores.
+        """
+        from core.subtitles import SubtitleGenerator
+        from core.ai_brain import ai_brain
+
+        sub_gen = SubtitleGenerator()
+        results = []
+        total_clips = len(clips)
+        clean_stem = "".join([c if c.isalnum() else "_" for c in Path(source_path).stem])[:20]
+
+        for idx, clip in enumerate(clips, start=1):
+            s_t = float(clip["start"])
+            e_t = float(clip["end"])
+            dur = float(clip.get("duration", e_t - s_t))
+            hook = clip.get("hook_text", f"VIRAL MOMENT #{idx}")
+
+            if progress_callback:
+                progress_callback(idx, total_clips, f"Short #{idx} ({s_t:.1f}s - {e_t:.1f}s)")
+
+            # Extract word segments for subtitles
+            clip_words = []
+            for seg in transcript_data.get("segments", []):
+                for w in seg.get("words", []):
+                    w_s = float(w.get("start", 0.0))
+                    w_e = float(w.get("end", 0.0))
+                    if s_t <= w_s <= e_t or (w_s < s_t and w_e > s_t):
+                        clip_words.append(w)
+
+            ass_path = PROCESSING_DIR / f"batch_sub_{clean_stem}_{int(s_t)}s.ass"
+            sub_gen.generate_ass(
+                clip_words=clip_words,
+                clip_start=s_t,
+                output_ass_path=ass_path,
+                margin_v=320,
+                font_size=72,
+                style_preset=style_preset
+            )
+
+            p_time = clip.get("punchline_time")
+            clip_info = {
+                "start": s_t,
+                "end": e_t,
+                "duration": dur,
+                "hook_text": hook,
+                "interactive_overlay": interactive_overlay,
+                "punchline_badge": punchline_badge,
+                "punchline_time": p_time,
+                "is_comedy_or_reaction": clip.get("is_comedy_or_reaction", True),
+                "superchat_card": clip.get("superchat_card")
+            }
+
+            out_name = f"short_{clean_stem}_{idx:02d}_{int(s_t)}s.mp4"
+            try:
+                rendered_path = self.export_short(
+                    source_path=source_path,
+                    clip_info=clip_info,
+                    layout_info=layout_info,
+                    subtitle_path=ass_path if clip_words else None,
+                    output_filename=out_name,
+                    enable_motion_graphics=enable_motion_graphics,
+                    enable_sfx=enable_sfx,
+                    transcript=transcript_data
+                )
+
+                # Generate social media metadata
+                full_text = clip.get("text", hook)
+                meta = ai_brain.generate_viral_metadata(
+                    clip_text=full_text,
+                    niche=clip.get("category", "COMEDY"),
+                    title_hint=hook
+                )
+
+                results.append({
+                    "id": idx,
+                    "filepath": str(rendered_path),
+                    "filename": rendered_path.name,
+                    "start": s_t,
+                    "end": e_t,
+                    "duration": dur,
+                    "category": clip.get("category", "VIRAL_GENERAL"),
+                    "category_label": clip.get("category_label", "⚡ Viral Short"),
+                    "viral_score": clip.get("viral_score", 90.0),
+                    "why_viral": clip.get("why_viral", "High viral retention potential"),
+                    "title": meta.get("title", f"{hook} #Shorts"),
+                    "hashtags": meta.get("hashtags", "#shorts #viral #reels"),
+                    "caption": meta.get("instagram_caption", "")
+                })
+                logger.info(f"Auto-rendered batch Short {idx}/{total_clips}: {rendered_path.name}")
+            except Exception as e:
+                logger.error(f"Failed rendering short {idx} ({s_t}s - {e_t}s): {e}")
+
+        return results
+
     def cleanup_processing_artifacts(self, preserve_source: bool = True):
         """
         Removes temporary video slices, WAV files, ASS subtitle files,

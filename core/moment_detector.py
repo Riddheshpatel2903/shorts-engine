@@ -145,6 +145,24 @@ HOOK_PATTERNS = [
     r"\b(why|how|what|where|who|when)\b.*\?"
 ]
 
+# 14. CONTROVERSIAL, DRAMA, LEAKS & UNCENSORED ALLEGATIONS
+CONTROVERSIAL_UNHINGED_PATTERNS = [
+    r"\b(scandal|exposed|allegations?|receipts|evidence|confession|secretly|caught red handed|betrayal|backstab|cheating|fraud|lawsuit|cancelled|blacklist)\b",
+    r"\b(i never told anyone|the truth about|destroying his career|he is a fraud|corrupt|illegal|police called|jail|felony|apology video|threatened)\b",
+    r"\b(unfiltered|unhinged|out of control|crossed the line|unforgivable|insane take|hot take|spilling tea|the beef|diss track|call him out)\b",
+    # Hindi / Hinglish Controversy & Kalesh
+    r"\b(kalesh|asli\s*kalesh|bhanda\s*phod\s*diya|pol\s*khol\s*di|expose\s*kar\s*diya|dhokha\s*diya|asli\s*sach|jhooth\s*bol\s*raha|scam\s*nikla|lafda\s*ho\s*gaya|case\s*kar\s*diya|ladai\s*ho\s*gayi|fraud\s*hai|chor\s*hai)\b"
+]
+
+# 15. SAVAGE ROASTS, DISRESPECT & DISCOURSE CLAPBACKS
+SAVAGE_ROAST_PATTERNS = [
+    r"\b(cooked him|bro got humbled|destroyed him|emotional damage|violation|ratio|no dignity|clowned|delusional|pathetic|embarrassing)\b",
+    r"\b(sit down|who asked|who invited you|clown behavior|npc|zero self respect|get out|you are nothing|bro thought|audacity)\b",
+    r"\b(career ended|he is crying|cooked beyond repair|zero rizz|down bad|crying in the corner|fold him|caught in 4k)\b",
+    # Hindi / Hinglish Savage Roasts
+    r"\b(aukaat\s*dikhadi|dhulai\s*kar\s*di|zaleel\s*kar\s*diya|beizzatti\s*kar\s*di|chomu|ullu|chutiya|chhapri|chapri|band\s*bajadi|acting\s*mat\s*kar|thook\s*ke\s*chaatna|kutte\s*jaisa|ganda\s*dhoya|galeez)\b"
+]
+
 
 def classify_video_niche(
     metadata: Dict[str, Any],
@@ -511,8 +529,24 @@ class MomentDetector:
             policy_matches += len(matches)
         policy_score = min(100.0, policy_matches * 28.0)
 
+        # 14. Controversial, Drama & Allegations Score
+        controversy_matches = 0
+        for pattern in CONTROVERSIAL_UNHINGED_PATTERNS:
+            matches = re.findall(pattern, text_lower)
+            controversy_matches += len(matches)
+        controversy_score = min(100.0, controversy_matches * 32.0)
+
+        # 15. Savage Roast & Disrespect Clapback Score
+        roast_matches = 0
+        for pattern in SAVAGE_ROAST_PATTERNS:
+            matches = re.findall(pattern, text_lower)
+            roast_matches += len(matches)
+        roast_score = min(100.0, roast_matches * 32.0)
+
         return {
             "comedy": round(comedy_score, 1),
+            "controversy": round(controversy_score, 1),
+            "roast": round(roast_score, 1),
             "rage": round(rage_score, 1),
             "happy": round(happy_score, 1),
             "shock": round(shock_score, 1),
@@ -612,6 +646,9 @@ class MomentDetector:
 
             # Determine dominant category
             scores_map = {
+                "CONTROVERSY_DRAMA": cat_scores["controversy"],
+                "SAVAGE_ROAST": cat_scores["roast"],
+                "COMEDY_HUMOR": cat_scores["comedy"],
                 "SUPERCHAT_CLAPBACK": cat_scores["superchat"],
                 "DRAMA_REACTION": cat_scores["drama"],
                 "GAMEPLAY_CLUTCH": cat_scores["clutch"],
@@ -621,7 +658,6 @@ class MomentDetector:
                 "STREAMER_RAGE": cat_scores["rage"],
                 "STREAMER_HAPPY": cat_scores["happy"],
                 "STREAMER_SHOCK": cat_scores["shock"],
-                "COMEDY_HUMOR": cat_scores["comedy"],
                 "ADVICE_EDUCATIONAL": cat_scores["advice"],
                 "MOTIVATIONAL_MINDSET": cat_scores["motivation"]
             }
@@ -631,6 +667,10 @@ class MomentDetector:
             if top_score < 25.0:
                 top_category = "VIRAL_GENERAL"
                 category_label = "⚡ Viral Highlight"
+            elif top_category == "CONTROVERSY_DRAMA":
+                category_label = "🔥 Uncensored Drama & Allegation"
+            elif top_category == "SAVAGE_ROAST":
+                category_label = "💀 Savage Roast & Clapback"
             elif top_category == "SUPERCHAT_CLAPBACK":
                 category_label = "💬 Superchat Rebuttal / Clapback"
             elif top_category == "DRAMA_REACTION":
@@ -656,12 +696,22 @@ class MomentDetector:
             elif top_category == "MOTIVATIONAL_MINDSET":
                 category_label = "🔥 Motivational & Mindset"
 
-            # Composite Segment Score (0 - 100)
-            genre_boost = max(top_score, cat_scores["hook"])
+            # Pure Semantic Virality Scoring (85% Semantic, 10% Cadence, 5% Audio Floor)
+            # Volume loudness is capped at 5% contribution so screams NEVER outrank roasts!
+            semantic_drive = max(
+                top_score,
+                cat_scores["comedy"],
+                cat_scores["controversy"],
+                cat_scores["roast"],
+                cat_scores["hook"]
+            )
+            silence_pen = 0.0 if audio_score >= 12.0 else -35.0
+
             composite_score = (
-                genre_boost * 0.45 +
-                audio_score * 0.35 +
-                cadence_score * 0.20
+                semantic_drive * 0.85 +
+                cadence_score * 0.10 +
+                min(audio_score, 70.0) * 0.05 +
+                silence_pen
             )
 
             analyzed_segments.append({
@@ -674,6 +724,8 @@ class MomentDetector:
                 "category": top_category,
                 "category_label": category_label,
                 "comedy_score": cat_scores["comedy"],
+                "controversy_score": cat_scores["controversy"],
+                "roast_score": cat_scores["roast"],
                 "rage_score": cat_scores["rage"],
                 "happy_score": cat_scores["happy"],
                 "shock_score": cat_scores["shock"],

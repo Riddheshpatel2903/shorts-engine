@@ -313,20 +313,45 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
     # Step 1: Source Ingestion
     with st.container():
         st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
-        st.markdown("<div class='pro-card-header'><span>Source Ingestion</span><span class='pro-badge badge-blue'>Step 1</span></div>", unsafe_allow_html=True)
+        st.markdown("<div class='pro-card-header'><span>Source Ingestion & Auto-Batch Generation</span><span class='pro-badge badge-blue'>Step 1</span></div>", unsafe_allow_html=True)
 
-        genre_choice = st.selectbox(
-            "🎯 Viral Clipping Focus & Content Objective:",
+        col_opt1, col_opt2 = st.columns([1.2, 0.8])
+        with col_opt1:
+            genre_choice = st.selectbox(
+                "🎯 Viral Clipping Focus & Content Objective:",
+                options=[
+                    "🔥 Uncensored Roasts, Drama & Controversial Topics (Savage / Unhinged)",
+                    "😂 Peak Humor, Banter & Standup Jokes (Prioritize Comedy & Punchlines)",
+                    "⚡ Auto-Discover Best 15 Viral Highlights (All-Round Multi-Topic)",
+                    "🎮 Clutch Gameplay & High Hype Action (Squad Wipes & Flicks)",
+                    "💬 Superchats, Controversy & Drama (Viewer Callouts)",
+                    "💡 Wisdom, Best Advice & Education (Talking Head)"
+                ],
+                index=0,
+                key="shorts_genre_objective",
+                help="Configures AI Brain (Ollama / Semantic NLP) to search for uncensored roasts, jokes, controversy, or clutch hype."
+            )
+        with col_opt2:
+            num_shorts_target = st.slider(
+                "🔢 Shorts to Auto-Generate in Batch:",
+                min_value=1,
+                max_value=20,
+                value=15,
+                step=1,
+                key="shorts_batch_count",
+                help="Automatically extracts and renders up to 15 distinct, non-overlapping shorts from the video in 1 click."
+            )
+
+        workflow_mode = st.radio(
+            "⚡ Production Workflow Mode:",
             options=[
-                "😂 Peak Humor, Banter & Roasts (Prioritize Comedy & Jokes)",
-                "🔥 Clutch Gameplay & High Hype Action (Squad Wipes & Flicks)",
-                "💬 Superchats, Controversy & Drama (Viewer Callouts)",
-                "💡 Wisdom, Best Advice & Education (Talking Head)",
-                "⚡ Auto-Discover Best Spikes (All Round Balanced)"
+                "🚀 1-Click Fully Automatic (Auto-render all 15 Shorts directly - Zero manual clicking)",
+                "🔍 Manual Review & Single Clip Approval (Fine-tune trim handles & framing)"
             ],
             index=0,
-            key="shorts_genre_objective",
-            help="Configures the AI moment detector and clip ranker to search for jokes, punchlines, or high-octane hype."
+            horizontal=True,
+            key="shorts_workflow_mode",
+            help="1-Click Mode automatically generates all 15 shorts directly into your library ready to post. Manual Review opens the trim handle editor."
         )
 
         c_in_type1, c_in_type2 = st.tabs(["Online Video Link (YouTube / Twitch / Kick / Reels)", "Upload Local Video / Direct File Path"])
@@ -366,8 +391,10 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
             with col_btn1:
                 if capture_mode.startswith("⚡"):
                     btn_text = f"⚡ Grab Live Fragment ({frag_duration}s) & Auto-Clip"
+                elif workflow_mode.startswith("🚀"):
+                    btn_text = f"🚀 Auto-Generate Top {num_shorts_target} Viral Shorts (1-Click Batch)"
                 else:
-                    btn_text = "📥 Download & Analyze Full Video"
+                    btn_text = f"🔍 Analyze & Select Top {num_shorts_target} Moments"
                 do_analyze = st.button(btn_text, type="primary", use_container_width=True, key="btn_shorts_analyze")
 
             with col_btn2:
@@ -416,7 +443,8 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
             if up_file:
                 file_mb = round(len(up_file.getvalue()) / (1024 * 1024), 1) if hasattr(up_file, "getvalue") else 0
                 st.caption(f"📁 Selected: `{up_file.name}` ({file_mb} MB)")
-                if st.button("Analyze Uploaded File", type="primary", use_container_width=True, key="btn_shorts_analyze_up"):
+                up_btn_text = f"🚀 Auto-Generate Top {num_shorts_target} Viral Shorts (1-Click)" if workflow_mode.startswith("🚀") else "Analyze Uploaded File"
+                if st.button(up_btn_text, type="primary", use_container_width=True, key="btn_shorts_analyze_up"):
                     save_loc = DOWNLOADS_DIR / up_file.name
                     with open(save_loc, "wb") as f:
                         f.write(up_file.getbuffer())
@@ -431,7 +459,8 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
             )
             if local_path_input and local_path_input.strip():
                 clean_p = Path(local_path_input.strip().strip('"').strip("'"))
-                if st.button("Load Local Video File", key="btn_load_local_shorts", use_container_width=True):
+                loc_btn_text = f"🚀 Auto-Generate Top {num_shorts_target} Viral Shorts from Local File (1-Click)" if workflow_mode.startswith("🚀") else "Load Local Video File"
+                if st.button(loc_btn_text, key="btn_load_local_shorts", use_container_width=True, type="primary" if workflow_mode.startswith("🚀") else "secondary"):
                     if clean_p.exists() and clean_p.is_file():
                         source_input_path = str(clean_p.resolve())
                         source_url_target = {"id": clean_p.stem, "title": clean_p.stem, "filepath": str(clean_p.resolve())}
@@ -481,10 +510,12 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                 segments = detector.analyze_moments(source_input_path, transcript)
 
                 # Determine genre focus from user selection
-                chosen_genre_raw = st.session_state.get("shorts_genre_objective", "😂")
-                if "Humor" in chosen_genre_raw or "😂" in chosen_genre_raw:
+                chosen_genre_raw = st.session_state.get("shorts_genre_objective", "🔥")
+                if "Roast" in chosen_genre_raw or "Controversial" in chosen_genre_raw or "🔥" in chosen_genre_raw:
+                    target_genre = "uncensored"
+                elif "Humor" in chosen_genre_raw or "Comedy" in chosen_genre_raw or "😂" in chosen_genre_raw:
                     target_genre = "comedy"
-                elif "Clutch" in chosen_genre_raw or "🔥" in chosen_genre_raw:
+                elif "Clutch" in chosen_genre_raw or "🎮" in chosen_genre_raw:
                     target_genre = "gaming"
                 elif "Superchat" in chosen_genre_raw or "💬" in chosen_genre_raw:
                     target_genre = "superchat"
@@ -493,29 +524,124 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                 else:
                     target_genre = "all"
 
+                target_count = int(st.session_state.get("shorts_batch_count", 15))
+
+                # Use AI Brain with Ollama semantic moment extraction if available
+                from core.ai_brain import ai_brain
+                ai_moments = ai_brain.detect_uncensored_viral_moments(
+                    transcript_segments=segments,
+                    num_moments=target_count,
+                    focus_genre=target_genre
+                )
+
                 selector = ClipSelector(min_duration=20.0, max_duration=55.0, genre_focus=target_genre)
                 moments = selector.select_clips(
                     segments,
-                    num_shorts=5,
+                    num_shorts=target_count,
                     genre_focus=target_genre,
                     transcript=transcript,
-                    extra_candidates=acoustic_peaks
+                    extra_candidates=ai_moments or acoustic_peaks
                 )
 
-                st.session_state.analysis_result = {
-                    "source_path": source_input_path,
-                    "metadata": source_url_target,
-                    "analysis": analysis,
-                    "transcript": transcript,
-                    "moments": moments,
-                    "duration": dur
-                }
-                if moments:
-                    st.session_state.selected_clip_window = {
-                        "start": moments[0]["start"],
-                        "end": moments[0]["end"]
+                is_auto_mode = st.session_state.get("shorts_workflow_mode", "🚀").startswith("🚀")
+
+                if is_auto_mode and moments:
+                    # 🚀 1-CLICK AUTOMATIC BATCH GENERATION (ZERO MANUAL APPROVALS)
+                    st.toast(f"Starting 1-Click Auto-Generation of {len(moments)} Viral Shorts...", icon="🚀")
+                    status_box = st.status(f"🚀 Auto-Rendering Top {len(moments)} Viral Shorts in 1080x1920...", expanded=True)
+                    exporter = VideoExporter()
+                    prog_bar = st.progress(0.0)
+
+                    def batch_progress_ui(cur, total, msg):
+                        status_box.write(f"🎬 **[{cur}/{total}]** Rendering {msg} with karaoke subtitles, motion graphics & meme SFX...")
+                        prog_bar.progress(cur / total)
+
+                    layout_info = analysis.get("layout", {})
+                    badge_val = "DEAD" if target_genre in ["comedy", "uncensored"] else "VIOLATION"
+                    batch_rendered = exporter.batch_render_shorts(
+                        source_path=source_input_path,
+                        clips=moments,
+                        layout_info=layout_info,
+                        transcript_data=transcript,
+                        style_preset="hormozi",
+                        enable_motion_graphics=True,
+                        enable_sfx=True,
+                        interactive_overlay="💀 WAIT FOR THE END...",
+                        punchline_badge=badge_val,
+                        progress_callback=batch_progress_ui
+                    )
+
+                    status_box.update(label=f"🎉 Successfully Auto-Generated {len(batch_rendered)} Viral Shorts!", state="complete", expanded=False)
+                    st.session_state.batch_generation_results = {
+                        "source_title": source_url_target.get("title", "Video"),
+                        "source_path": source_input_path,
+                        "results": batch_rendered
                     }
+                    st.session_state.analysis_result = None
+                    st.rerun()
+
+                else:
+                    st.session_state.analysis_result = {
+                        "source_path": source_input_path,
+                        "metadata": source_url_target,
+                        "analysis": analysis,
+                        "transcript": transcript,
+                        "moments": moments,
+                        "duration": dur
+                    }
+                    if moments:
+                        st.session_state.selected_clip_window = {
+                            "start": moments[0]["start"],
+                            "end": moments[0]["end"]
+                        }
+                    st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # Batch Auto-Generation Deliverables Gallery
+    if st.session_state.get("batch_generation_results"):
+        b_data = st.session_state.batch_generation_results
+        res_list = b_data.get("results", [])
+        src_name = b_data.get("source_title", "Video")
+
+        st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='pro-card-header'><span>🎉 Auto-Generated Viral Shorts Batch ({len(res_list)} Shorts)</span>"
+            f"<span class='pro-badge badge-green'>100% Ready to Post</span></div>",
+            unsafe_allow_html=True
+        )
+        st.success(f"Successfully auto-generated **{len(res_list)} Viral Shorts** from `{src_name[:65]}` without any manual approvals!")
+
+        c_gal_btn1, c_gal_btn2 = st.columns([1.2, 0.8])
+        with c_gal_btn1:
+            if st.button("🔄 Generate Another Video / Batch", use_container_width=True, key="btn_reset_batch_gallery"):
+                st.session_state.batch_generation_results = None
+                st.session_state.analysis_result = None
                 st.rerun()
+        with c_gal_btn2:
+            st.caption(f"📁 Deliverables stored in `workspace/output/` and `workspace/library/`.")
+
+        grid_cols = st.columns(3)
+        for g_idx, g_item in enumerate(res_list):
+            with grid_cols[g_idx % 3]:
+                st.markdown(f"**Short #{g_idx+1}: {g_item.get('category_label', '⚡ Viral Highlight')}**")
+                vid_p = Path(g_item["filepath"])
+                if vid_p.exists():
+                    st.video(str(vid_p))
+                    with open(vid_p, "rb") as f_data:
+                        st.download_button(
+                            f"📥 Download Short #{g_idx+1} (MP4)",
+                            data=f_data.read(),
+                            file_name=vid_p.name,
+                            mime="video/mp4",
+                            key=f"dl_batch_short_{g_idx}",
+                            use_container_width=True
+                        )
+                st.caption(f"⭐ **Score:** `{g_item.get('viral_score', 90):.0f}%` | ⏱️ `{g_item.get('duration', 30):.1f}s` | 🎯 `{g_item.get('start', 0):.1f}s - {g_item.get('end', 0):.1f}s`")
+                with st.expander("📋 Social Copy (Title, Hashtags & Caption)", expanded=False):
+                    st.text_input("Title:", value=g_item.get("title", ""), key=f"title_inp_{g_idx}")
+                    st.text_input("Hashtags:", value=g_item.get("hashtags", ""), key=f"hash_inp_{g_idx}")
+                    st.text_area("Instagram Caption:", value=g_item.get("caption", ""), height=70, key=f"cap_inp_{g_idx}")
 
         st.markdown("</div>", unsafe_allow_html=True)
 

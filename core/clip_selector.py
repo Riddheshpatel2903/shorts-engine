@@ -59,6 +59,8 @@ class ClipSelector:
 
         # Average category & reaction scores across the window
         c_scores = [s.get("comedy_score", 0.0) for s in segments_subset]
+        cont_scores = [s.get("controversy_score", 0.0) for s in segments_subset]
+        roast_scores = [s.get("roast_score", 0.0) for s in segments_subset]
         r_scores = [s.get("rage_score", 0.0) for s in segments_subset]
         h_scores = [s.get("happy_score", 0.0) for s in segments_subset]
         s_scores = [s.get("shock_score", 0.0) for s in segments_subset]
@@ -71,6 +73,8 @@ class ClipSelector:
         wpm_scores = [s.get("wpm", 130.0) for s in segments_subset]
 
         avg_comedy = sum(c_scores) / len(c_scores)
+        max_controversy = max(cont_scores) if cont_scores else 0.0
+        max_roast = max(roast_scores) if roast_scores else 0.0
         avg_rage = sum(r_scores) / len(r_scores)
         avg_happy = sum(h_scores) / len(h_scores)
         avg_shock = sum(s_scores) / len(s_scores)
@@ -85,6 +89,8 @@ class ClipSelector:
         # Opening Hook (First segment or words)
         hook_seg = segments_subset[0]
         hook_comedy = hook_seg.get("comedy_score", 0.0)
+        hook_controversy = hook_seg.get("controversy_score", 0.0)
+        hook_roast = hook_seg.get("roast_score", 0.0)
         hook_rage = hook_seg.get("rage_score", 0.0)
         hook_happy = hook_seg.get("happy_score", 0.0)
         hook_shock = hook_seg.get("shock_score", 0.0)
@@ -101,17 +107,18 @@ class ClipSelector:
         has_gta6 = "GTA6_NEW_GAME" in seg_categories
         has_policy = "GEOPOLITICS_POLICY" in seg_categories
 
-        # Peak and setup-punchline virality for humor
+        # Peak and setup-punchline virality for humor, controversy & roasts
         max_comedy = max(c_scores) if c_scores else 0.0
         has_punchline = any(s.get("is_joke_punchline") for s in segments_subset)
         has_setup = any(s.get("is_joke_setup") for s in segments_subset)
 
-        # In comedy, peak punchline carries the moment rather than being diluted by setup segments
+        # In comedy and roasts, peak punchline carries the moment rather than being diluted by setup
         window_comedy = (max_comedy * 0.65) + (avg_comedy * 0.35)
         if has_punchline and has_setup:
             window_comedy = min(100.0, window_comedy + 14.0)
 
-        # Weighted Category & Reaction Virality
+        window_controversy = (max_controversy * 0.70) + ((sum(cont_scores)/len(cont_scores)) * 0.30)
+        window_roast = (max_roast * 0.70) + ((sum(roast_scores)/len(roast_scores)) * 0.30)
         window_rage = (avg_rage * 0.55) + (hook_rage * 0.45)
         window_happy = (avg_happy * 0.55) + (hook_happy * 0.45)
         window_shock = (avg_shock * 0.55) + (hook_shock * 0.45)
@@ -121,6 +128,9 @@ class ClipSelector:
 
         # Determine dominant category
         category_map = {
+            "CONTROVERSY_DRAMA": window_controversy,
+            "SAVAGE_ROAST": window_roast,
+            "COMEDY_HUMOR": window_comedy,
             "SUPERCHAT_CLAPBACK": 88.0 if has_superchat else 0.0,
             "DRAMA_REACTION": 86.0 if has_drama else 0.0,
             "GAMEPLAY_CLUTCH": 84.0 if has_clutch else 0.0,
@@ -130,7 +140,6 @@ class ClipSelector:
             "STREAMER_RAGE": window_rage,
             "STREAMER_HAPPY": window_happy,
             "STREAMER_SHOCK": window_shock,
-            "COMEDY_HUMOR": window_comedy,
             "ADVICE_EDUCATIONAL": window_advice,
             "MOTIVATIONAL_MINDSET": window_motivation
         }
@@ -140,19 +149,25 @@ class ClipSelector:
         if dominant_score < 25.0:
             dominant_cat = "VIRAL_GENERAL"
             cat_label = "⚡ Viral Highlight"
-            why_viral = f"High-momentum viral highlight with strong acoustic delivery ({avg_audio:.0f}% energy, {avg_wpm:.0f} WPM)."
+            why_viral = f"High-momentum viral highlight with strong pacing ({avg_wpm:.0f} WPM)."
+        elif dominant_cat == "CONTROVERSY_DRAMA":
+            cat_label = "🔥 Uncensored Drama & Allegation"
+            why_viral = f"High-stakes controversy / accusation breakdown ({window_controversy:.0f}% intensity index)."
+        elif dominant_cat == "SAVAGE_ROAST":
+            cat_label = "💀 Savage Roast & Clapback"
+            why_viral = f"Unfiltered roast delivery with devastating punchline timing ({window_roast:.0f}% roast index)."
         elif dominant_cat == "SUPERCHAT_CLAPBACK":
             cat_label = "💬 Superchat Rebuttal / Clapback"
-            why_viral = f"Streamer directly addresses donor allegation on Superchat ({avg_wpm:.0f} WPM, {avg_audio:.0f}% acoustic energy)."
+            why_viral = f"Streamer directly addresses donor allegation on Superchat ({avg_wpm:.0f} WPM)."
         elif dominant_cat == "DRAMA_REACTION":
             cat_label = "🍿 Drama Reaction / Roast"
             why_viral = f"High-engagement drama breakdown reacting to other creator controversy."
         elif dominant_cat == "GAMEPLAY_CLUTCH":
             cat_label = "🎯 Multi-Kill & Clutch Action"
-            why_viral = f"Intense squad-wipe sequence with acoustic shout spike ({avg_audio:.0f}%) and high-cadence callouts."
+            why_viral = f"Intense squad-wipe sequence with high-cadence callouts."
         elif dominant_cat == "GTA6_NEW_GAME":
             cat_label = "🚗 GTA 6 / New Game Hype"
-            why_viral = f"Next-gen physics & gameplay shock reaction ({avg_shock:.0f}% disbelief, {avg_audio:.0f}% audio surge)."
+            why_viral = f"Next-gen physics & gameplay shock reaction ({avg_shock:.0f}% disbelief)."
         elif dominant_cat == "GEOPOLITICS_POLICY":
             cat_label = "🏛️ New Law & Policy Reform"
             why_viral = f"Breaking national legal reform / policy announcement with high retention potential."
@@ -193,19 +208,22 @@ class ClipSelector:
             score = (window_happy * 0.70) + (avg_audio * 0.20) + (avg_general * 0.10) + boundary_bonus
         elif self.genre_focus in ["shock", "shocked", "hype", "disbelief"]:
             score = (window_shock * 0.70) + (avg_audio * 0.20) + (avg_general * 0.10) + boundary_bonus
-        elif self.genre_focus in ["comedy", "humor", "funny", "laugh", "laughing", "roast", "jokes"]:
-            score = (window_comedy * 0.74) + (avg_audio * 0.16) + (avg_general * 0.10) + boundary_bonus
+        elif self.genre_focus in ["uncensored", "controversy", "drama", "roast", "savage"]:
+            score = (max(window_controversy, window_roast, window_comedy) * 0.85) + (avg_cadence * 0.10) + (min(avg_audio, 70.0) * 0.05) + boundary_bonus
+        elif self.genre_focus in ["comedy", "humor", "funny", "laugh", "laughing", "jokes"]:
+            score = (window_comedy * 0.85) + (avg_cadence * 0.10) + (min(avg_audio, 70.0) * 0.05) + boundary_bonus
         elif self.genre_focus in ["advice", "education", "educational"]:
-            score = (window_advice * 0.65) + (avg_cadence * 0.15) + (avg_general * 0.20) + boundary_bonus
+            score = (window_advice * 0.75) + (avg_cadence * 0.20) + (min(avg_audio, 70.0) * 0.05) + boundary_bonus
         elif self.genre_focus in ["motivation", "motivational", "mindset"]:
-            score = (window_motivation * 0.65) + (avg_cadence * 0.15) + (avg_general * 0.20) + boundary_bonus
+            score = (window_motivation * 0.75) + (avg_cadence * 0.20) + (min(avg_audio, 70.0) * 0.05) + boundary_bonus
         else:
-            # "all" / "auto": Multi-modal scoring blending genre power, acoustic peak surges, hook velocity, and humor bonus!
+            # "all" / "auto": Semantic-first virality blending humor, roasts, drama & curiosity!
             genre_power = max(category_map.values())
-            energy_boost = (avg_audio - 50.0) * 0.45 if avg_audio > 50.0 else 0.0
-            hook_boost = (hook_power - 40.0) * 0.35 if hook_power > 40.0 else 0.0
-            humor_boost = (window_comedy - 40.0) * 0.30 if window_comedy > 40.0 else 0.0
-            raw_score = (genre_power * 0.42) + (avg_audio * 0.22) + (avg_general * 0.14) + (avg_cadence * 0.10) + boundary_bonus + energy_boost + hook_boost + humor_boost
+            hook_boost = (hook_power - 40.0) * 0.25 if hook_power > 40.0 else 0.0
+            humor_boost = (window_comedy - 35.0) * 0.25 if window_comedy > 35.0 else 0.0
+            controversy_boost = (window_controversy - 35.0) * 0.25 if window_controversy > 35.0 else 0.0
+            roast_boost = (window_roast - 35.0) * 0.25 if window_roast > 35.0 else 0.0
+            raw_score = (genre_power * 0.75) + (avg_cadence * 0.15) + (min(avg_audio, 70.0) * 0.10) + boundary_bonus + hook_boost + humor_boost + controversy_boost + roast_boost
             score = min(99.0, max(50.0, raw_score))
 
         radar = {
@@ -230,6 +248,8 @@ class ClipSelector:
         return {
             "viral_score": min(round(score, 1), 100.0),
             "comedy_score": round(window_comedy, 1),
+            "controversy_score": round(window_controversy, 1),
+            "roast_score": round(window_roast, 1),
             "rage_score": round(window_rage, 1),
             "happy_score": round(window_happy, 1),
             "shock_score": round(window_shock, 1),
@@ -242,7 +262,7 @@ class ClipSelector:
             "category_label": cat_label,
             "why_viral": why_viral,
             "radar": radar,
-            "is_comedy_or_reaction": (dominant_cat in ["COMEDY_HUMOR", "STREAMER_RAGE", "STREAMER_SHOCK", "STREAMER_HAPPY"] or window_comedy >= 45.0),
+            "is_comedy_or_reaction": (dominant_cat in ["COMEDY_HUMOR", "CONTROVERSY_DRAMA", "SAVAGE_ROAST", "STREAMER_RAGE", "STREAMER_SHOCK", "STREAMER_HAPPY"] or window_comedy >= 45.0 or window_controversy >= 45.0 or window_roast >= 45.0),
             "has_punchline": has_punchline,
             "has_setup": has_setup,
             "punchline_time": punchline_time
@@ -297,8 +317,9 @@ class ClipSelector:
 
                 if dur >= self.min_duration:
                     is_clean_end = self._ends_sentence(analyzed_segments[j]["text"])
+                    is_last_in_range = (j + 1 == n_segs) or ((analyzed_segments[j + 1]["end"] - start_time) > self.max_duration)
                     
-                    if is_clean_end or dur >= self.target_duration:
+                    if is_clean_end or dur >= self.target_duration or is_last_in_range:
                         eval_data = self._evaluate_candidate_window(current_segments)
                         full_text = " ".join(s["text"] for s in current_segments)
                         
@@ -308,6 +329,8 @@ class ClipSelector:
                             "duration": round(dur, 2),
                             "viral_score": eval_data["viral_score"],
                             "comedy_score": eval_data["comedy_score"],
+                            "controversy_score": eval_data.get("controversy_score", 0.0),
+                            "roast_score": eval_data.get("roast_score", 0.0),
                             "rage_score": eval_data.get("rage_score", 0.0),
                             "happy_score": eval_data.get("happy_score", 0.0),
                             "shock_score": eval_data.get("shock_score", 0.0),
@@ -340,6 +363,13 @@ class ClipSelector:
                 
                 joke_subsegs = [s for s in analyzed_segments if s["end"] >= target_start and s["start"] <= target_end]
                 if joke_subsegs:
+                    # Trim outer segments if total duration exceeds max_duration
+                    while len(joke_subsegs) > 1 and (joke_subsegs[-1]["end"] - joke_subsegs[0]["start"]) > self.max_duration:
+                        if (p_time - joke_subsegs[0]["start"]) > (joke_subsegs[-1]["end"] - p_time):
+                            joke_subsegs.pop(0)
+                        else:
+                            joke_subsegs.pop(-1)
+
                     j_start = joke_subsegs[0]["start"]
                     j_end = joke_subsegs[-1]["end"]
                     j_dur = j_end - j_start
@@ -353,6 +383,8 @@ class ClipSelector:
                             "duration": round(j_dur, 2),
                             "viral_score": min(100.0, eval_data["viral_score"] + 6.0),
                             "comedy_score": eval_data["comedy_score"],
+                            "controversy_score": eval_data.get("controversy_score", 0.0),
+                            "roast_score": eval_data.get("roast_score", 0.0),
                             "rage_score": eval_data.get("rage_score", 0.0),
                             "happy_score": eval_data.get("happy_score", 0.0),
                             "shock_score": eval_data.get("shock_score", 0.0),
@@ -370,6 +402,56 @@ class ClipSelector:
                             "clean_boundary": is_clean_end,
                             "is_comedy_or_reaction": True,
                             "punchline_time": p_time,
+                            "has_punchline": True,
+                            "has_setup": True
+                        })
+
+        # Dedicated Roast & Controversy-Anchored Window Generation:
+        for k, seg in enumerate(analyzed_segments):
+            if seg.get("category") in ["CONTROVERSY_DRAMA", "SAVAGE_ROAST"] or seg.get("roast_score", 0) >= 40.0 or seg.get("controversy_score", 0) >= 40.0:
+                seg_dur = seg.get("duration", seg.get("end", 0.0) - seg.get("start", 0.0))
+                c_time = seg["start"] + seg_dur * 0.5
+                target_start = max(0.0, c_time - 16.0)
+                target_end = min(analyzed_segments[-1]["end"], c_time + 12.0)
+                c_subsegs = [s for s in analyzed_segments if s["end"] >= target_start and s["start"] <= target_end]
+                if c_subsegs:
+                    # Trim outer segments if total duration exceeds max_duration
+                    while len(c_subsegs) > 1 and (c_subsegs[-1]["end"] - c_subsegs[0]["start"]) > self.max_duration:
+                        if (c_time - c_subsegs[0]["start"]) > (c_subsegs[-1]["end"] - c_time):
+                            c_subsegs.pop(0)
+                        else:
+                            c_subsegs.pop(-1)
+
+                    c_start = c_subsegs[0]["start"]
+                    c_end = c_subsegs[-1]["end"]
+                    c_dur = c_end - c_start
+                    if self.min_duration <= c_dur <= self.max_duration:
+                        eval_data = self._evaluate_candidate_window(c_subsegs)
+                        candidates.append({
+                            "start": round(c_start, 2),
+                            "end": round(c_end, 2),
+                            "duration": round(c_dur, 2),
+                            "viral_score": min(100.0, eval_data["viral_score"] + 8.0),
+                            "comedy_score": eval_data["comedy_score"],
+                            "controversy_score": eval_data.get("controversy_score", 85.0),
+                            "roast_score": eval_data.get("roast_score", 85.0),
+                            "rage_score": eval_data.get("rage_score", 0.0),
+                            "happy_score": eval_data.get("happy_score", 0.0),
+                            "shock_score": eval_data.get("shock_score", 0.0),
+                            "advice_score": eval_data["advice_score"],
+                            "motivation_score": eval_data["motivation_score"],
+                            "audio_score": eval_data.get("audio_score", 50.0),
+                            "wpm": eval_data.get("wpm", 130.0),
+                            "category": eval_data["category"],
+                            "category_label": eval_data["category_label"],
+                            "why_viral": eval_data["why_viral"],
+                            "radar": eval_data["radar"],
+                            "text": " ".join(s["text"] for s in c_subsegs),
+                            "hook_text": c_subsegs[0]["text"][:90],
+                            "segments": c_subsegs,
+                            "clean_boundary": self._ends_sentence(c_subsegs[-1]["text"]),
+                            "is_comedy_or_reaction": True,
+                            "punchline_time": c_time,
                             "has_punchline": True,
                             "has_setup": True
                         })
@@ -420,6 +502,27 @@ class ClipSelector:
                 selected_clips.append(cand)
                 if len(selected_clips) >= num_shorts:
                     break
+
+        # Multi-Short Batch Guarantee: If video contains more moments and user requested up to 15 shorts,
+        # slightly relax the overlap threshold (to 0.50) to ensure the requested quantity is met!
+        if len(selected_clips) < num_shorts:
+            for cand in candidates:
+                if any(cand["start"] == sc["start"] and cand["end"] == sc["end"] for sc in selected_clips):
+                    continue
+                overlap = False
+                for sel in selected_clips:
+                    overlap_start = max(cand["start"], sel["start"])
+                    overlap_end = min(cand["end"], sel["end"])
+                    if overlap_end > overlap_start:
+                        overlap_dur = overlap_end - overlap_start
+                        shorter_dur = min(cand["duration"], sel["duration"])
+                        if (overlap_dur / shorter_dur) > 0.50:
+                            overlap = True
+                            break
+                if not overlap:
+                    selected_clips.append(cand)
+                    if len(selected_clips) >= num_shorts:
+                        break
 
         # AutoClip Precision Boundary Refinement (Sentence & Word Snapping)
         if transcript:

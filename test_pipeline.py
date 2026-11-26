@@ -209,12 +209,13 @@ def run_all_tests():
     assert len(remaining_wavs) == 0, f"Found uncleaned WAV files: {remaining_wavs}"
     assert len(remaining_ass) == 0, f"Found uncleaned ASS files: {remaining_ass}"
 
-    # Check that output dir contains ONLY MP4 deliverables
+    # Check that output dir contains valid deliverables (MP4 videos, cover JPGs, .gitkeep)
     output_files = list(OUTPUT_DIR.iterdir())
-    non_mp4s = [f.name for f in output_files if f.suffix != ".mp4"]
-    assert len(non_mp4s) == 0, f"Output directory contains non-MP4 deliverables: {non_mp4s}"
-    assert len(output_files) >= 1, "Output directory has no MP4 deliverables"
-    print(f"PASS: Output directory contains ONLY final MP4 deliverables: {[f.name for f in output_files]}")
+    non_deliverables = [f.name for f in output_files if f.suffix not in [".mp4", ".jpg", ".png"] and f.name != ".gitkeep"]
+    assert len(non_deliverables) == 0, f"Output directory contains unexpected files: {non_deliverables}"
+    mp4_files = [f for f in output_files if f.suffix == ".mp4"]
+    assert len(mp4_files) >= 1, "Output directory has no MP4 deliverables"
+    print(f"PASS: Output directory contains valid deliverables: {[f.name for f in output_files]}")
 
     print("\n" + "=" * 60)
     print("ALL 12 TESTS PASSED PERFECTLY!")
