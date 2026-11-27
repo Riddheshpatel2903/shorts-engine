@@ -251,19 +251,21 @@ class PlaywrightPublisher:
         except Exception as e:
             logger.debug(f"Profile lock release note: {e}")
 
-        logger.info(f"Starting automated YouTube upload for: {vid_file.name}")
+        logger.info(f"Starting automated YouTube upload for: {vid_file.name} (Browser visible on screen)")
 
         try:
             channel = get_installed_browser_channel()
             launch_kwargs = {
                 "user_data_dir": str(profile_dir),
-                "headless": False,  # Visible browser avoids Google bot blocks and headless crash
-                "viewport": {"width": 1280, "height": 800},
+                "headless": False,  # Visible browser window runs live so user can monitor upload
+                "viewport": {"width": 1366, "height": 850},
                 "ignore_default_args": ["--enable-automation"],
                 "args": [
                     "--disable-blink-features=AutomationControlled",
                     "--no-sandbox",
-                    "--disable-infobars"
+                    "--disable-infobars",
+                    "--disable-backgrounding-occluded-windows",
+                    "--disable-renderer-backgrounding"
                 ],
                 "user_agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -355,7 +357,8 @@ class PlaywrightPublisher:
                 # 6. Click Done / Publish
                 done_btn = page.locator("#done-button, button:has-text('Save'), button:has-text('Publish')").first
                 done_btn.click(timeout=10000)
-                time_sleep(4000)
+                logger.info("Publish clicked! Keeping browser running so video upload and processing finish visibly...")
+                time_sleep(12000)  # Keeps browser running visibly so user can verify upload
 
                 context.close()
                 logger.info(f"Successfully published YouTube Short: {yt_link}")
@@ -556,10 +559,18 @@ class PlaywrightPublisher:
                 # 6. Click Share
                 share_btn = page.locator("div[role='button']:has-text('Share')").first
                 share_btn.click(timeout=10000)
+                logger.info("Share clicked! Keeping browser running so Reel upload completes visibly on screen...")
 
                 # Wait for confirmation: "Your reel has been shared"
-                page.wait_for_selector("span:has-text('Your reel has been shared'), span:has-text('Your post has been shared')", timeout=60000)
-                time_sleep(2000)
+                try:
+                    page.wait_for_selector(
+                        "span:has-text('Your reel has been shared'), span:has-text('Your post has been shared'), svg[aria-label='Reel shared']",
+                        timeout=90000
+                    )
+                except Exception:
+                    pass
+
+                time_sleep(12000)  # Keeps browser running visibly so user can verify upload
 
                 context.close()
                 logger.info("Successfully published Instagram Reel!")

@@ -289,10 +289,31 @@ class VideoExporter:
             if progress_callback:
                 progress_callback(idx, total_clips, f"Short #{idx} ({s_t:.1f}s - {e_t:.1f}s)")
 
-            # Extract word segments for subtitles
+            # Extract word segments for subtitles & collect exact spoken text
             clip_words = []
+            spoken_texts = []
             for seg in transcript_data.get("segments", []):
-                for w in seg.get("words", []):
+                seg_s = float(seg.get("start", 0.0))
+                seg_e = float(seg.get("end", 0.0))
+                if (s_t <= seg_s <= e_t) or (s_t <= seg_e <= e_t) or (seg_s < s_t and seg_e > e_t):
+                    if seg.get("text"):
+                        spoken_texts.append(seg.get("text", "").strip())
+
+                seg_words = seg.get("words", [])
+                if not seg_words and seg.get("text"):
+                    # Fallback synthesize word timings from segment duration if Whisper omitted word timestamps
+                    w_tokens = seg.get("text", "").strip().split()
+                    if w_tokens:
+                        s_dur = max(0.2, seg_e - seg_s)
+                        w_step = s_dur / len(w_tokens)
+                        for w_i, token in enumerate(w_tokens):
+                            seg_words.append({
+                                "word": token,
+                                "start": round(seg_s + w_i * w_step, 3),
+                                "end": round(seg_s + (w_i + 1) * w_step, 3)
+                            })
+
+                for w in seg_words:
                     w_s = float(w.get("start", 0.0))
                     w_e = float(w.get("end", 0.0))
                     if s_t <= w_s <= e_t or (w_s < s_t and w_e > s_t):
@@ -335,8 +356,8 @@ class VideoExporter:
                     transcript=transcript_data
                 )
 
-                # Generate social media metadata
-                full_text = clip.get("text", hook)
+                # Generate social media metadata matching actual spoken words
+                full_text = clip.get("text") or " ".join(spoken_texts) or hook
                 meta = ai_brain.generate_viral_metadata(
                     clip_text=full_text,
                     niche=clip.get("category", "COMEDY"),

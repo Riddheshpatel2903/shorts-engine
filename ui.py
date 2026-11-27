@@ -229,14 +229,18 @@ with st.sidebar:
     else:
         nav_index = 0
 
-    # EXACTLY 3 SECTIONS AS REQUESTED
+    nav_options = [
+        "🎬 Viral Shorts Studio",
+        "⚡ Auto-Catch Viral Reels",
+        "🎞️ Long Video Generator",
+        "📁 Video Library & Storage"
+    ]
+    cur_nav = st.session_state.get("nav_tab", nav_options[0])
+    nav_index = nav_options.index(cur_nav) if cur_nav in nav_options else 0
+
     st.session_state.nav_tab = st.radio(
         "Studio Sections:",
-        options=[
-            "🎬 Viral Shorts Studio",
-            "🎞️ Long Video Generator",
-            "📁 Video Library & Storage"
-        ],
+        options=nav_options,
         index=nav_index
     )
 
@@ -1252,7 +1256,135 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
 
 
 # =======================================================
-# SECTION 2: 🎞️ LONG VIDEO GENERATOR
+# SECTION 2: ⚡ AUTO-CATCH VIRAL REELS & REPOST ENGINE
+# =======================================================
+elif st.session_state.nav_tab in ["⚡ Auto-Catch Viral Reels", "Auto-Catch Viral Reels"]:
+    st.markdown("## ⚡ Auto-Catch Viral Reels & Repost Engine")
+    st.caption("Auto-catch trending viral Instagram Reels, TikToks, or YouTube Shorts, generate 100% relevant AI captions from spoken words, and auto-upload directly to your connected channels.")
+
+    from core.reels_curator import reels_curator
+
+    with st.container():
+        st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
+        st.markdown("<div class='pro-card-header'><span>Catch Viral Reel or Creator Feed</span><span class='pro-badge badge-blue'>1-Click Pipeline</span></div>", unsafe_allow_html=True)
+
+        reel_target_url = st.text_input(
+            "Enter Viral Reel / TikTok / Shorts Link or Instagram Handle (@creator):",
+            placeholder="e.g. https://www.instagram.com/reel/C... or https://www.tiktok.com/@... or @creators_handle",
+            key="inp_curator_url"
+        )
+
+        c_opt_cur1, c_opt_cur2 = st.columns(2)
+        with c_opt_cur1:
+            cur_do_yt = st.checkbox("🚀 Auto-Upload to YouTube Shorts", value=social_status.get("youtube_connected", False), key="chk_cur_yt")
+        with c_opt_cur2:
+            cur_do_ig = st.checkbox("🚀 Auto-Upload to Instagram Reels", value=social_status.get("instagram_connected", False), key="chk_cur_ig")
+
+        do_catch_btn = st.button("🚀 Catch Viral Reel, Generate Captions & Auto-Upload", type="primary", use_container_width=True, key="btn_run_reels_curator")
+
+        if do_catch_btn and reel_target_url and reel_target_url.strip():
+            cur_status_box = st.status("⚡ Running 1-Click Viral Reels Auto-Curation...", expanded=True)
+
+            def curator_ui_progress(msg: str):
+                cur_status_box.write(f"📲 {msg}")
+
+            try:
+                cur_result = reels_curator.curate_and_auto_repost(
+                    source_url=reel_target_url.strip(),
+                    upload_youtube=cur_do_yt,
+                    upload_instagram=cur_do_ig,
+                    progress_callback=curator_ui_progress
+                )
+                if cur_result.get("success"):
+                    cur_status_box.update(label="🎉 Successfully Curated & Processed Viral Reel!", state="complete", expanded=False)
+                    st.session_state.curated_reel_result = cur_result
+                    st.rerun()
+                else:
+                    cur_status_box.update(label="⚠️ Error during curation pipeline.", state="error", expanded=True)
+                    st.error(f"Curation error: {cur_result.get('error', 'Unknown error')}")
+            except Exception as e:
+                cur_status_box.update(label="⚠️ Error occurred during processing.", state="error", expanded=True)
+                st.error(f"Execution failure: {e}")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # Display Curated Deliverable & Social Links
+    if st.session_state.get("curated_reel_result"):
+        c_res = st.session_state.curated_reel_result
+        dl_info = c_res.get("download", {})
+        content_info = c_res.get("content", {})
+        up_info = c_res.get("upload_results", {})
+
+        st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
+        st.markdown("<div class='pro-card-header'><span>🎉 Curated Viral Reel & Social Copy</span><span class='pro-badge badge-green'>Ready / Published</span></div>", unsafe_allow_html=True)
+
+        col_c_vid, col_c_meta = st.columns([1, 1.2])
+        with col_c_vid:
+            v_p = Path(content_info.get("filepath", dl_info.get("filepath", "")))
+            if v_p.exists():
+                st.video(str(v_p))
+                with open(v_p, "rb") as f_dl:
+                    st.download_button("📥 Download Curated Video (MP4)", data=f_dl.read(), file_name=v_p.name, mime="video/mp4", use_container_width=True)
+            st.caption(f"**Original Title:** `{dl_info.get('title', 'Reel')[:60]}` | **Creator:** `{dl_info.get('uploader', 'Creator')}`")
+
+        with col_c_meta:
+            st.markdown("#### 🎯 AI-Generated Relevant Content")
+            t_box = st.text_input("Title (YouTube Shorts):", value=content_info.get("title", ""), key="cur_title_inp")
+            cap_box = st.text_area("Instagram Caption:", value=content_info.get("caption", ""), height=80, key="cur_cap_inp")
+            tags_box = st.text_input("Hashtags:", value=content_info.get("hashtags", ""), key="cur_tags_inp")
+
+            if content_info.get("transcript"):
+                with st.expander("🎙️ Spoken Speech Transcript", expanded=False):
+                    st.write(content_info["transcript"])
+
+            # Upload Status & Instant Action Buttons
+            if up_info:
+                st.markdown("#### 🚀 Live Publication Status")
+                yt_res = up_info.get("youtube")
+                ig_res = up_info.get("instagram")
+                if yt_res:
+                    if yt_res.get("success"):
+                        st.success(f"✅ Published to YouTube Shorts: [{yt_res.get('url')}]({yt_res.get('url')})")
+                    else:
+                        st.info(f"YouTube Upload Note: {yt_res.get('error')}")
+                if ig_res:
+                    if ig_res.get("success"):
+                        st.success(f"✅ Published to Instagram Reels: [{ig_res.get('url')}]({ig_res.get('url')})")
+                    else:
+                        st.info(f"Instagram Upload Note: {ig_res.get('error')}")
+
+            c_cur_post_yt, c_cur_post_ig = st.columns(2)
+            with c_cur_post_yt:
+                if st.button("🚀 Post YouTube Now", key="btn_cur_post_yt_manual", use_container_width=True):
+                    with st.spinner("Posting to YouTube Shorts (Browser visible on screen)..."):
+                        y_res = publisher.publish_to_youtube(
+                            video_path=content_info.get("filepath", dl_info.get("filepath")),
+                            title=t_box,
+                            description=cap_box,
+                            tags=tags_box
+                        )
+                        if y_res.get("success"):
+                            st.success(f"Published to YouTube Shorts: {y_res.get('url')}")
+                        else:
+                            st.error(f"YouTube Error: {y_res.get('error')}")
+            with c_cur_post_ig:
+                if st.button("🚀 Post Instagram Now", key="btn_cur_post_ig_manual", use_container_width=True):
+                    with st.spinner("Posting to Instagram Reels (Browser visible on screen)..."):
+                        full_c = f"{cap_box}\n\n{tags_box}".strip()
+                        i_res = publisher.publish_to_instagram(
+                            video_url_or_path=content_info.get("filepath", dl_info.get("filepath")),
+                            caption=full_c
+                        )
+                        if i_res.get("success"):
+                            st.success(f"Published to Instagram Reels: {i_res.get('url')}")
+                        else:
+                            st.error(f"Instagram Error: {i_res.get('error')}")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+# =======================================================
+# SECTION 3: 🎞️ LONG VIDEO GENERATOR
 # =======================================================
 elif st.session_state.nav_tab in ["🎞️ Long Video Generator", "Long Video Generator"]:
     st.markdown("## 🎞️ Long-Format Highlight Video Generator")

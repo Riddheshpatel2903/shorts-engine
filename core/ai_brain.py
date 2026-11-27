@@ -224,139 +224,112 @@ class AIBrain:
         source_metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, str]:
         """
-        Generates ready-to-publish social metadata for YouTube Shorts and Instagram Reels.
-        Actively inspects and adapts the original viral video's tags and description structure.
+        Generates ready-to-publish, 100% content-relevant social metadata for YouTube Shorts and Instagram Reels.
+        Strictly analyzes what is ACTUALLY being spoken in this exact clip rather than using generic templates.
         """
         niche_upper = niche.upper()
-        t_low = (clip_text + " " + title_hint).lower()
+        clean_text = clip_text.strip() if clip_text else ""
+        clean_hint = title_hint.strip() if title_hint else ""
 
         # Extract viral blueprint from original video
         blueprint = self.extract_viral_blueprint(source_metadata)
         copied_tags = " ".join(blueprint["hashtags"]) if blueprint["hashtags"] else ""
         copied_cta = blueprint.get("cta", "")
 
-        # If LLM active, let it craft viral copy using the original blueprint
-        if self.backend in ["gemini", "ollama"] and clip_text:
+        # 1. LLM-Powered Semantic Metadata Generation (Ollama / Gemini)
+        if self.backend in ["gemini", "ollama"] and clean_text:
             system = (
-                f"You are a top viral social media producer in {niche_upper}. "
-                "Analyze the source video's viral text and create ultra-high CTR copy for YouTube Shorts & Instagram Reels. "
-                "Copy and adapt the winning hashtag structure from the viral original. "
-                "Return JSON with keys: title, hook_overlay, instagram_caption, hashtags."
+                "You are an elite viral social media editor for YouTube Shorts and Instagram Reels. "
+                "Analyze the EXACT SPOKEN WORDS of this clip and generate 100% relevant, high-CTR social copy. "
+                "CRITICAL: Do NOT use unrelated generic templates. Everything MUST be directly tied to what was actually said. "
+                "Return valid JSON ONLY with keys: title, hook_overlay, instagram_caption, hashtags."
             )
             prompt = (
-                f"Topic: {clip_text[:300]}\n"
-                f"Original Viral Title: {title_hint}\n"
-                f"Original Viral Tags: {copied_tags}\n"
-                f"Original Viral CTA: {copied_cta}"
+                f"EXACT SPOKEN WORDS OF THIS CLIP:\n\"{clean_text[:900]}\"\n\n"
+                f"Source / Context Title: {clean_hint}\n"
+                f"Copied Tags: {copied_tags}\n\n"
+                "Requirements:\n"
+                "1. 'title': High-CTR, punchy click-inducing title (under 75 characters) accurately capturing this specific moment with 1-2 emojis and #Shorts.\n"
+                "2. 'hook_overlay': 2-5 word on-screen hook summarizing this statement.\n"
+                "3. 'instagram_caption': 2-3 sentence summary of what was actually said in this clip, plus an engaging question for the comments.\n"
+                "4. 'hashtags': 8-10 trending hashtags strictly relevant to the words and topic of this clip."
             )
             res = self.call_llm(prompt, system_prompt=system)
             if res:
                 try:
                     clean = re.sub(r"^```json\s*|\s*```$", "", res.strip(), flags=re.MULTILINE)
                     data = json.loads(clean)
-                    return {
-                        "title": data.get("title", f"{title_hint[:60]} #Shorts"),
-                        "hook_overlay": data.get("hook_overlay", "WAIT TILL THE END ⚠️"),
-                        "instagram_caption": data.get("instagram_caption", f"{title_hint}\n\nDrop your thoughts below! 👇"),
-                        "hashtags": data.get("hashtags", copied_tags or "#shorts #viral #reels")
-                    }
-                except Exception:
-                    pass
+                    if data.get("title") and data.get("instagram_caption"):
+                        return {
+                            "title": data.get("title", f"{clean_hint[:60]} #Shorts"),
+                            "hook_overlay": data.get("hook_overlay", "WAIT FOR THIS ⚠️"),
+                            "instagram_caption": data.get("instagram_caption", f"{clean_text[:120]}...\n\nWhat are your thoughts? Drop a comment! 👇"),
+                            "hashtags": data.get("hashtags", copied_tags or "#shorts #viral #reels")
+                        }
+                except Exception as e:
+                    logger.debug(f"LLM metadata parsing error: {e}")
 
-        # Intelligent Built-In Copy Engine
-        if niche_upper == "GEOPOLITICS":
-            if any(k in t_low for k in ["jaishankar", "foreign policy", "russian oil", "western media"]):
-                title = "S. Jaishankar's Savage Reply to Western Media! 💥🇮🇳 #Shorts"
-                hook = "JAISHANKAR DROPS FACTS 💥"
-                caption = "When questioned on India's strategic autonomy, EAM Dr. S. Jaishankar gave this iconic reply with pure facts.\n\nDo you support India's independent foreign policy? Drop your thoughts below! 👇"
-                default_tags = "#jaishankar #geopolitics #indiadiplomacy #foreignpolicy #worldnews #shorts #reels"
-            elif any(k in t_low for k in ["supreme court", "law", "criminal", "bns", "justice", "ruling"]):
-                title = "Supreme Court Historic New Law Decision! ⚠️🏛️ #Shorts"
-                hook = "NEW CRIMINAL LAW EXPLAINED ⚖️"
-                caption = "The new legal reform and Supreme Court ruling impact every citizen from today.\n\nAre you aware of your new rights under this law? Tell us in the comments! 👇"
-                default_tags = "#supremecourt #indianlaw #bns #constitution #legalnews #shorts #viral"
-            else:
-                title = f"{title_hint if title_hint else 'The Crisis That Changes Everything in 2026'} ⚠️ #Shorts"
-                hook = "THE SHOCKING REALITY ⚠️"
-                caption = "Crucial developments that will shape the upcoming global strategy.\n\nWhat is your perspective on this? Drop your comments below! 👇"
-                default_tags = "#geopolitics #india #news #strategy #worldaffairs #shorts #reels"
+        # 2. Intelligent Dynamic Content-Aware Fallback (Strictly Derived from Actual Speech)
+        # Extract meaningful quote snippets from the clip text
+        words = clean_text.split()
+        first_quote = " ".join(words[:7]) if words else clean_hint
+        first_quote_clean = re.sub(r"[^\w\s\?'!]", "", first_quote).strip()
 
-        elif niche_upper == "GAMING":
-            # 1. BGMI New Event / Update / Mode / Leaks
-            if any(k in t_low for k in ["bgmi", "battlegrounds"]) and any(k in t_low for k in ["event", "update", "mode", "leak", "rp", "crate", "pass", "dinosaur", "shadow", "winter", "patch"]):
-                clean_h = title_hint.strip() if title_hint else "BGMI New Event Update"
-                title = f"{clean_h} 🔥 #Shorts" if not clean_h.endswith("#Shorts") else clean_h
-                hook = "BGMI NEW EVENT UPDATE 🔥"
-                caption = f"{clean_h} is finally here with insane free rewards and new mode! Tag your BGMI squad below! 👇"
-                default_tags = "#bgmi #bgminewupdate #bgmievents #bgmiindia #pubgmobile #battlegroundsmobileindia #gaming #shorts #viral #reels"
+        # Dynamic title derived directly from spoken text
+        t_low = clean_text.lower()
+        if any(q in t_low for q in ["why", "how", "what", "who", "when"]):
+            dynamic_title = f"Bro Really Asked: \"{first_quote_clean}\" 💀 #Shorts"
+        elif any(k in t_low for k in ["stole", "cheated", "exposed", "scam", "lie", "lying", "proof"]):
+            dynamic_title = f"Exposed In 4K: \"{first_quote_clean}\" 🚨 #Shorts"
+        elif any(k in t_low for k in ["roast", "cooked", "humbled", "insane", "crazy"]):
+            dynamic_title = f"He Got Absolutely Cooked! 😂 \"{first_quote_clean}\" #Shorts"
+        elif any(k in t_low for k in ["never", "always", "truth", "secret", "reality"]):
+            dynamic_title = f"The Unfiltered Truth: \"{first_quote_clean}\" ⚠️ #Shorts"
+        elif words:
+            dynamic_title = f"\"{first_quote_clean}\" 💥 #Shorts"
+        else:
+            dynamic_title = f"{clean_hint if clean_hint else 'Viral Moment Highlight'} 🔥 #Shorts"
 
-            # 2. BGMI Clutch / Esports / Tournament
-            elif any(k in t_low for k in ["bgmi", "pubg"]) and any(k in t_low for k in ["clutch", "1v4", "1v3", "esports", "scout", "jonathan", "finals", "tourney", "godlike", "soul"]):
-                clean_h = title_hint.strip() if title_hint else "Insane 1v4 BGMI Clutch"
-                title = f"{clean_h} 🎯🔥 #Shorts" if not clean_h.endswith("#Shorts") else clean_h
-                hook = "INSANE 1v4 CLUTCH 🎯🔥"
-                caption = f"{clean_h}! Clean squad wipe in the final circle. Rate this clutch from 1 to 10 in the comments! 👇"
-                default_tags = "#bgmi #bgmiclutch #1v4 #bgmisports #jonathangaming #scoutop #gaming #esports #shorts #viral #reels"
+        if len(dynamic_title) > 85:
+            dynamic_title = dynamic_title[:80] + "... #Shorts"
 
-            # 3. Superchat Controversy & Streamer Rebuttal
-            elif any(k in t_low for k in ["superchat", "donation", "reply", "controversy", "drama", "roast", "clapback", "allegation"]):
-                clean_h = title_hint.strip() if title_hint else "Streamer Savage Reply to Superchat"
-                title = f"{clean_h} 💬🔥 #Shorts" if not clean_h.endswith("#Shorts") else clean_h
-                hook = "STREAMER UNFILTERED REPLY 💬🔥"
-                caption = f"{clean_h}! Bro sent this Superchat live and got an instant reaction. What's your take on this? Comment below! 👇"
-                default_tags = "#superchat #streamer #streamermoments #twitchclips #streamerhighlight #viralmoments #shorts #viral #reels"
+        # Dynamic Caption derived directly from the exact spoken text
+        summary_snippet = clean_text[:200] if len(clean_text) > 200 else clean_text
+        if summary_snippet:
+            dynamic_caption = (
+                f"\"{summary_snippet}\"\n\n"
+                f"What do you think about this? Do you agree or disagree? Let us know in the comments below! 👇"
+            )
+        else:
+            dynamic_caption = f"{clean_hint}\n\nDrop your thoughts and share this with your friends! 👇"
 
-            # 4. Top Streamer Live Moments (Speed, Kai Cenat, xQc)
-            elif any(k in t_low for k in ["speed", "kai", "ishowspeed", "cenat", "xqc"]):
-                clean_h = title_hint.strip() if title_hint else "Top Streamer Goes Wild Live"
-                title = f"{clean_h} ⚡🤯 #Shorts" if not clean_h.endswith("#Shorts") else clean_h
-                hook = "STREAMER GOES WILD ⚡🤯"
-                caption = f"{clean_h}! This live stream moment was completely unhinged 😂 Did you see this live? Tell us below! 👇"
-                default_tags = "#ishowspeed #kaicenat #streamer #twitch #livestream #funnyclips #viral #shorts #reels"
+        if copied_cta and copied_cta not in dynamic_caption:
+            dynamic_caption = f"{dynamic_caption}\n\n{copied_cta}"
 
-            # 5. GTA 6 & Rockstar Next-Gen Game
-            elif any(k in t_low for k in ["gta 6", "gta vi", "vice city", "physics", "rockstar"]):
-                clean_h = title_hint.strip() if title_hint else "GTA 6 Leaked Gameplay & Map Details"
-                title = f"{clean_h} 🚗🚨 #Shorts" if not clean_h.endswith("#Shorts") else clean_h
-                hook = "GTA 6 DETAILS LEAKED 🚗"
-                caption = f"{clean_h}! The world scale and physics in GTA 6 look unreal. Are you playing on PC or Console? Tell us below! 👇"
-                default_tags = "#gta6 #gtavi #rockstargames #gta6leak #gaming #gamerlife #nextgen #shorts #reels"
+        # Dynamic Hashtags extracted from spoken keywords
+        detected_tags = ["#shorts", "#viral", "#reels", "#trending", "#fyp"]
+        meaningful_words = [re.sub(r'\W+', '', w.lower()) for w in words if len(w) >= 4]
+        stop_words = {"this", "that", "with", "from", "have", "they", "what", "there", "about", "would", "could", "should", "your", "were", "been", "their"}
+        filtered_keywords = [w for w in meaningful_words if w not in stop_words]
+        
+        # Add top keywords as hashtags
+        for kw in filtered_keywords[:5]:
+            tag = f"#{kw}"
+            if tag not in detected_tags:
+                detected_tags.append(tag)
 
-            # 6. General Gaming / Custom Topic
-            else:
-                clean_h = title_hint.strip() if title_hint else "Viral Gaming Highlight"
-                title = f"{clean_h} 🎮🔥 #Shorts" if not clean_h.endswith("#Shorts") else clean_h
-                hook = "VIRAL GAMING MOMENT 🎮"
-                caption = f"{clean_h}! Drop your thoughts and tag your squad teammate below! 👇"
-                default_tags = "#gaming #gamer #gameplay #streamer #bgmi #shorts #viral #reels #trendingshorts"
+        if copied_tags:
+            for c_tag in copied_tags.split():
+                if c_tag not in detected_tags and len(detected_tags) < 12:
+                    detected_tags.append(c_tag)
 
-        elif niche_upper == "SPORTS":
-            title = f"{title_hint if title_hint else 'Unbelievable Final Over Thriller!'} 🏏🔥 #Shorts"
-            hook = "UNREAL CLUTCH FINISH 🏏"
-            caption = "What a match! Absolute nail-biter in the final overs.\n\nWho was the player of the match for you? Drop your take below! 👇"
-            default_tags = "#cricket #teamindia #ipl #viratkohli #rohitsharma #sports #shorts #reels"
-
-        elif niche_upper == "MEMES":
-            title = f"{title_hint if title_hint else 'Bro Really Thought He Could Get Away With This'} 💀 #Shorts"
-            hook = "BRO THOUGHT 💀"
-            caption = "The internet has no chill today 😂\n\nSend this to that one friend who does this every single time! 👇"
-            default_tags = "#memes #funny #viral #comedy #relatable #trending #shorts #reels"
-
-        else: # EDUCATION
-            title = f"{title_hint if title_hint else 'The Truth Nobody Is Talking About'} 🧠 #Shorts"
-            hook = "HOW THIS HAPPENED 🧠"
-            caption = "A breakdown of what actually happened behind closed doors.\n\nDid you find this insightful? Follow for more daily deep-dives! 💡"
-            default_tags = "#education #casestudy #knowledge #facts #didyouknow #shorts #reels"
-
-        # Merge copied hashtags with default tags
-        final_tags = copied_tags if copied_tags else default_tags
-        final_caption = f"{caption}\n\n{copied_cta}" if (copied_cta and copied_cta not in caption) else caption
+        final_hashtags = " ".join(detected_tags)
 
         return {
-            "title": title[:80],
-            "hook_overlay": hook,
-            "instagram_caption": final_caption,
-            "hashtags": final_tags
+            "title": dynamic_title,
+            "hook_overlay": first_quote_clean.upper()[:25] + " ⚠️",
+            "instagram_caption": dynamic_caption,
+            "hashtags": final_hashtags
         }
 
 
