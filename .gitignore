@@ -34,6 +34,9 @@ workspace/downloads/.gitkeep
 # Sensitive social media tokens & credentials
 workspace/social_credentials.json
 social_credentials.json
+workspace/browser_profile/
+workspace/social_settings.json
+workspace/publishing_schedule.json
 cookies.txt
 .env
 

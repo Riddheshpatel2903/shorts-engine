@@ -41,6 +41,7 @@ from core.publisher import publisher
 from core.autoclip_precision import autoclip_aligner, autoclip_cutter
 from core.chat_analyzer import chat_analyzer
 from core.long_video_generator import long_video_generator
+from core.scheduler import scheduler, DAILY_SLOTS
 
 face_detector = FaceDetector()
 
@@ -132,53 +133,124 @@ def render_publish_status_banner():
             elif ig.get("error"):
                 st.info(f"Instagram Upload Note: {ig.get('error')}")
 
-# Modern Professional SaaS CSS
+# Modern Professional SaaS CSS (Stitch Velocity White & Royal Blue Theme)
 st.markdown("""
 <style>
     /* Global Base */
     .stApp {
-        background-color: #0b0d13;
-        color: #e2e8f0;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background-color: #f8fafc !important;
+        color: #0f172a !important;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
     }
     
     /* Studio Card */
     .pro-card {
-        background: #121622;
-        border: 1px solid #202738;
-        border-radius: 8px;
-        padding: 16px 20px;
-        margin-bottom: 16px;
+        background: #ffffff !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 12px !important;
+        padding: 20px 24px !important;
+        margin-bottom: 20px !important;
+        box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.05), 0 1px 2px -1px rgba(15, 23, 42, 0.05) !important;
     }
     .pro-card-header {
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: #f1f5f9;
-        margin-bottom: 8px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+        font-size: 1.05rem !important;
+        font-weight: 700 !important;
+        color: #0f172a !important;
+        margin-bottom: 12px !important;
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        border-bottom: 1px solid #f1f5f9 !important;
+        padding-bottom: 8px !important;
     }
     
     /* Professional Badges */
     .pro-badge {
-        display: inline-block;
-        padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 0.72rem;
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
+        display: inline-block !important;
+        padding: 3px 10px !important;
+        border-radius: 6px !important;
+        font-size: 0.75rem !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.02em !important;
+        text-transform: uppercase !important;
     }
-    .badge-blue { background: #1e293b; color: #38bdf8; border: 1px solid #0284c744; }
-    .badge-green { background: #064e3b; color: #34d399; border: 1px solid #05966944; }
-    .badge-amber { background: #451a03; color: #fbbf24; border: 1px solid #d9770644; }
-    .badge-purple { background: #3b0764; color: #c084fc; border: 1px solid #a855f744; }
+    .badge-blue { background: #eff6ff !important; color: #2563eb !important; border: 1px solid #bfdbfe !important; }
+    .badge-green { background: #ecfdf5 !important; color: #059669 !important; border: 1px solid #a7f3d0 !important; }
+    .badge-amber { background: #fffbeb !important; color: #d97706 !important; border: 1px solid #fde68a !important; }
+    .badge-purple { background: #faf5ff !important; color: #7c3aed !important; border: 1px solid #ddd6fe !important; }
+    .badge-red { background: #fef2f2 !important; color: #dc2626 !important; border: 1px solid #fecaca !important; }
+    .badge-pink { background: #fdf2f8 !important; color: #db2777 !important; border: 1px solid #fbcfe8 !important; }
     
     /* Sidebar Navigation */
     section[data-testid="stSidebar"] {
-        background-color: #0e111a;
-        border-right: 1px solid #1c2230;
+        background-color: #ffffff !important;
+        border-right: 1px solid #e2e8f0 !important;
+    }
+
+    /* Metric Cards */
+    div[data-testid="stMetric"] {
+        background-color: #ffffff !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 10px !important;
+        padding: 12px 16px !important;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04) !important;
+    }
+
+    /* Primary Buttons */
+    button[kind="primary"] {
+        background-color: #2563eb !important;
+        color: #ffffff !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        border: none !important;
+        box-shadow: 0 1px 2px 0 rgba(37, 99, 235, 0.2) !important;
+    }
+    button[kind="primary"]:hover {
+        background-color: #1d4ed8 !important;
+    }
+
+    /* Secondary Buttons */
+    button[kind="secondary"] {
+        background-color: #ffffff !important;
+        color: #1e293b !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 8px !important;
+    }
+    button[kind="secondary"]:hover {
+        background-color: #f8fafc !important;
+        border-color: #94a3b8 !important;
+        color: #2563eb !important;
+    }
+
+    /* Calendar & Tray Styling */
+    .cal-cell {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 10px;
+        min-height: 120px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+    }
+    .cal-slot-card {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-left: 3px solid #2563eb;
+        border-radius: 6px;
+        padding: 6px 8px;
+        margin-bottom: 6px;
+    }
+    .short-item-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 12px;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .short-item-card:hover {
+        border-color: #93c5fd;
+        box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.08);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -205,6 +277,14 @@ if "generated_long_video" not in st.session_state:
 if "long_yt_meta" not in st.session_state:
     st.session_state.long_yt_meta = None
 
+# Calendar & Scheduling State
+if "calendar_week_offset" not in st.session_state:
+    st.session_state.calendar_week_offset = 0
+if "target_schedule_slot" not in st.session_state:
+    st.session_state.target_schedule_slot = None
+if "calendar_platform_filter" not in st.session_state:
+    st.session_state.calendar_platform_filter = "All Platforms"
+
 # Storage telemetry
 storage_info = workspace_cleaner.get_storage_stats()
 social_status = publisher.get_status()
@@ -218,14 +298,16 @@ with st.sidebar:
     st.markdown("### ViralShorts Pro")
     st.caption("AI-Powered Video Studio")
 
-    # Mapping to handle legacy state gracefully
-    current_tab = st.session_state.nav_tab
+    # Mapping to handle navigation state gracefully
+    current_tab = st.session_state.get("nav_tab", "")
     if current_tab in ["Clip Studio", "🎬 Viral Shorts Studio"]:
         nav_index = 0
-    elif current_tab in ["Long Video Generator", "🎞️ Long Video Generator"]:
+    elif current_tab in ["⚡ Auto-Catch Viral Reels", "Auto-Catch Viral Reels"]:
         nav_index = 1
-    elif current_tab in ["Exports & Video Library", "📁 Video Library & Storage", "Daily Feeds & Scripts", "Topic to Video Studio"]:
+    elif current_tab in ["Long Video Generator", "🎞️ Long Video Generator"]:
         nav_index = 2
+    elif current_tab in ["📅 Publishing Calendar & Library", "📁 Video Library & Storage", "Exports & Video Library", "Daily Feeds & Scripts", "Topic to Video Studio"]:
+        nav_index = 3
     else:
         nav_index = 0
 
@@ -233,10 +315,10 @@ with st.sidebar:
         "🎬 Viral Shorts Studio",
         "⚡ Auto-Catch Viral Reels",
         "🎞️ Long Video Generator",
-        "📁 Video Library & Storage"
+        "📅 Publishing Calendar & Library"
     ]
     cur_nav = st.session_state.get("nav_tab", nav_options[0])
-    nav_index = nav_options.index(cur_nav) if cur_nav in nav_options else 0
+    nav_index = nav_options.index(cur_nav) if cur_nav in nav_options else nav_index
 
     st.session_state.nav_tab = st.radio(
         "Studio Sections:",
@@ -1301,49 +1383,83 @@ elif st.session_state.nav_tab in ["⚡ Auto-Catch Viral Reels", "Auto-Catch Vira
     st.markdown("## ⚡ Auto-Catch Viral Reels & Repost Engine")
     st.caption("Auto-catch trending viral Instagram Reels, TikToks, or YouTube Shorts, generate 100% relevant AI captions from spoken words, and auto-upload directly to your connected channels.")
 
-    from core.reels_curator import reels_curator
+    from core.reels_curator import reels_curator, NICHE_SEARCH_QUERIES
 
     with st.container():
         st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
-        st.markdown("<div class='pro-card-header'><span>Catch Viral Reel or Creator Feed</span><span class='pro-badge badge-blue'>1-Click Pipeline</span></div>", unsafe_allow_html=True)
+        st.markdown("<div class='pro-card-header'><span>⚡ 0-Click Auto-Catch Viral Reels & Repost</span><span class='pro-badge badge-blue'>Auto-Discovery Engine</span></div>", unsafe_allow_html=True)
 
-        reel_target_url = st.text_input(
-            "Enter Viral Reel / TikTok / Shorts Link or Instagram Handle (@creator):",
-            placeholder="e.g. https://www.instagram.com/reel/C... or https://www.tiktok.com/@... or @creators_handle",
-            key="inp_curator_url"
-        )
+        col_niche, col_opts = st.columns([1.5, 1])
+        with col_niche:
+            selected_niche = st.selectbox(
+                "Select Viral Content Niche / Algorithm Category:",
+                options=list(NICHE_SEARCH_QUERIES.keys()),
+                index=0,
+                key="sel_curator_niche"
+            )
+            st.caption("🤖 The engine autonomously scans social media feeds, selects the highest-engagement 9:16 vertical video, transcribes spoken dialogue, writes content-relevant captions, and publishes.")
 
-        c_opt_cur1, c_opt_cur2 = st.columns(2)
-        with c_opt_cur1:
+        with col_opts:
+            st.markdown("**Social Reposting Channels:**")
             cur_do_yt = st.checkbox("🚀 Auto-Upload to YouTube Shorts", value=social_status.get("youtube_connected", False), key="chk_cur_yt")
-        with c_opt_cur2:
             cur_do_ig = st.checkbox("🚀 Auto-Upload to Instagram Reels", value=social_status.get("instagram_connected", False), key="chk_cur_ig")
 
-        do_catch_btn = st.button("🚀 Catch Viral Reel, Generate Captions & Auto-Upload", type="primary", use_container_width=True, key="btn_run_reels_curator")
+        do_auto_discover_btn = st.button("🔥 Auto-Discover & Catch Top Viral Reel (No Link Needed)", type="primary", use_container_width=True, key="btn_auto_discover_curator")
 
-        if do_catch_btn and reel_target_url and reel_target_url.strip():
-            cur_status_box = st.status("⚡ Running 1-Click Viral Reels Auto-Curation...", expanded=True)
+        if do_auto_discover_btn:
+            cur_status_box = st.status(f"⚡ Auto-Discovering & Catching Top '{selected_niche}' Reel...", expanded=True)
 
             def curator_ui_progress(msg: str):
                 cur_status_box.write(f"📲 {msg}")
 
             try:
-                cur_result = reels_curator.curate_and_auto_repost(
-                    source_url=reel_target_url.strip(),
+                cur_result = reels_curator.auto_discover_and_curate(
+                    niche=selected_niche,
                     upload_youtube=cur_do_yt,
                     upload_instagram=cur_do_ig,
                     progress_callback=curator_ui_progress
                 )
                 if cur_result.get("success"):
-                    cur_status_box.update(label="🎉 Successfully Curated & Processed Viral Reel!", state="complete", expanded=False)
+                    cur_status_box.update(label="🎉 Successfully Discovered, Curated & Saved Viral Reel!", state="complete", expanded=False)
                     st.session_state.curated_reel_result = cur_result
                     st.rerun()
                 else:
-                    cur_status_box.update(label="⚠️ Error during curation pipeline.", state="error", expanded=True)
+                    cur_status_box.update(label="⚠️ Error during auto-discovery pipeline.", state="error", expanded=True)
                     st.error(f"Curation error: {cur_result.get('error', 'Unknown error')}")
             except Exception as e:
                 cur_status_box.update(label="⚠️ Error occurred during processing.", state="error", expanded=True)
                 st.error(f"Execution failure: {e}")
+
+        st.markdown("---")
+        with st.expander("🔗 Or Enter Custom Link / Creator Handle (@creator) [Optional Override]", expanded=False):
+            reel_target_url = st.text_input(
+                "Custom Video URL or Handle:",
+                placeholder="e.g. https://www.instagram.com/reel/C... or https://www.tiktok.com/@... or @creators_handle",
+                key="inp_curator_url"
+            )
+            if st.button("🚀 Catch From Custom Link", key="btn_run_custom_link", use_container_width=True) and reel_target_url.strip():
+                cur_status_box2 = st.status("⚡ Running Viral Reel Curation from Link...", expanded=True)
+
+                def curator_ui_progress2(msg: str):
+                    cur_status_box2.write(f"📲 {msg}")
+
+                try:
+                    cur_result = reels_curator.curate_and_auto_repost(
+                        source_url=reel_target_url.strip(),
+                        upload_youtube=cur_do_yt,
+                        upload_instagram=cur_do_ig,
+                        progress_callback=curator_ui_progress2
+                    )
+                    if cur_result.get("success"):
+                        cur_status_box2.update(label="🎉 Successfully Curated & Processed Viral Reel!", state="complete", expanded=False)
+                        st.session_state.curated_reel_result = cur_result
+                        st.rerun()
+                    else:
+                        cur_status_box2.update(label="⚠️ Error during curation pipeline.", state="error", expanded=True)
+                        st.error(f"Curation error: {cur_result.get('error', 'Unknown error')}")
+                except Exception as e:
+                    cur_status_box2.update(label="⚠️ Error occurred during processing.", state="error", expanded=True)
+                    st.error(f"Execution failure: {e}")
 
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -1701,144 +1817,292 @@ elif st.session_state.nav_tab in ["🎞️ Long Video Generator", "Long Video Ge
 
 
 # =======================================================
-# SECTION 3: 📁 VIDEO LIBRARY & STORAGE / MEMORY MANAGER
+# SECTION 3: 📅 CONTENT PUBLISHING CALENDAR & VIDEO LIBRARY
 # =======================================================
-elif st.session_state.nav_tab in ["📁 Video Library & Storage", "Exports & Video Library"]:
-    st.markdown("## 📁 Video Library & Storage Manager")
-    st.caption("Manage all rendered Shorts & Long videos, preview and delete unwanted clips with a single click, and automatically clear temporary cache files to keep your computer fast.")
+elif st.session_state.nav_tab in ["📅 Publishing Calendar & Library", "📁 Video Library & Storage", "Exports & Video Library"]:
+    from datetime import datetime, date, timedelta
+    from core.scheduler import scheduler, DAILY_SLOTS
 
-    # Storage Telemetry Cards
-    storage_info = workspace_cleaner.get_storage_stats()
-    all_deliverables = workspace_cleaner.list_generated_deliverables()
+    st.markdown("## 📅 Content Publishing Calendar & Video Library")
+    st.caption("Plan, schedule, and auto-publish YouTube Shorts and Instagram Reels with 100% topic-accurate AI captions stored directly with each video.")
 
+    # 1. Calendar Time Window & Controls
+    today = date.today()
+    week_offset = st.session_state.get("calendar_week_offset", 0)
+    start_of_week = today - timedelta(days=today.weekday()) + timedelta(weeks=week_offset)
+    end_of_week = start_of_week + timedelta(days=6)
+    week_days = [start_of_week + timedelta(days=i) for i in range(7)]
+
+    schedule_data = scheduler.get_schedule()
+    all_available_shorts = scheduler.list_all_available_shorts()
+    unscheduled_shorts = [s for s in all_available_shorts if not s["is_scheduled"]]
+
+    # Header Control Bar
     st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
-    st.markdown("<div class='pro-card-header'><span>Disk Space Telemetry & Automated Memory Clean</span><span class='pro-badge badge-green'>Active Auto-Purge</span></div>", unsafe_allow_html=True)
+    c_ctrl1, c_ctrl2, c_ctrl3 = st.columns([1.5, 1, 1.2])
 
-    c_m1, c_m2, c_m3 = st.columns(3)
-    with c_m1:
-        st.metric(
-            label="Raw Source Videos",
-            value=f"{storage_info['downloads_size_gb']:.2f} GB",
-            delta=f"{storage_info['downloads_count']} downloaded files"
-        )
-    with c_m2:
-        st.metric(
-            label="Temp Processing Cache",
-            value=f"{storage_info['temp_size_mb']:.1f} MB",
-            delta=f"{storage_info['temp_count']} temp audio/ass files"
-        )
-    with c_m3:
-        st.metric(
-            label="Rendered Video Deliverables",
-            value=f"{storage_info['output_size_mb']:.1f} MB",
-            delta=f"{len(all_deliverables)} finished videos"
-        )
+    with c_ctrl1:
+        c_nav_p, c_nav_t, c_nav_n = st.columns([1, 2, 1])
+        with c_nav_p:
+            if st.button("◀ Prev Week", key="cal_prev_week", use_container_width=True):
+                st.session_state.calendar_week_offset = week_offset - 1
+                st.rerun()
+        with c_nav_t:
+            st.markdown(f"<div style='text-align: center; font-weight: 700; padding-top: 6px; color: #0f172a; font-size: 0.95rem;'>{start_of_week.strftime('%b %d')} – {end_of_week.strftime('%b %d, %Y')}</div>", unsafe_allow_html=True)
+        with c_nav_n:
+            if st.button("Next Week ▶", key="cal_next_week", use_container_width=True):
+                st.session_state.calendar_week_offset = week_offset + 1
+                st.rerun()
 
-    st.write("")
-    col_cl1, col_cl2 = st.columns(2)
-    with col_cl1:
-        if st.button("🧹 Clean Temporary Processing Cache Now", use_container_width=True, key="btn_clean_temp_cache"):
-            res = workspace_cleaner.clean_temporary_files()
-            st.success(f"Cleaned {res['deleted_count']} temporary files. Freed {res['freed_mb']:.1f} MB.")
-            st.rerun()
-    with col_cl2:
-        if st.button("🚀 Deep Purge Raw Source Videos (Free GBs)", use_container_width=True, key="btn_purge_downloads", help="Deletes heavy downloaded stream source videos while keeping your rendered Shorts and Long videos 100% safe."):
-            res = workspace_cleaner.clean_all_downloads(preserve_test_sample=True)
-            st.success(f"Purged {res['deleted_count']} bulky downloads. Freed {res['freed_gb']:.2f} GB of disk space!")
+    with c_ctrl2:
+        if st.button("📅 Jump to Today", key="cal_today_jump", use_container_width=True):
+            st.session_state.calendar_week_offset = 0
             st.rerun()
 
-    st.caption("💡 *Notice: Temporary audio chunks and .ass caches are automatically cleared in the background on startup.*")
+    with c_ctrl3:
+        if st.button("⚡ Auto-Fill Week (Ready Shorts)", key="cal_autofill_week", type="primary", use_container_width=True):
+            filled = scheduler.auto_fill_week(start_date_str=start_of_week.strftime("%Y-%m-%d"))
+            if filled > 0:
+                st.toast(f"🎉 Auto-scheduled {filled} viral shorts across upcoming empty slots!", icon="📅")
+            else:
+                st.toast("No empty upcoming slots or no unscheduled shorts available.", icon="ℹ️")
+            st.rerun()
+
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Deliverables Gallery
-    st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
-    st.markdown(f"<div class='pro-card-header'><span>Rendered Videos Gallery ({len(all_deliverables)} Total)</span><span class='pro-badge badge-blue'>Deliverables</span></div>", unsafe_allow_html=True)
+    # 2. Main 2-Column Split: Calendar (Left 63%) + Ready Shorts Tray (Right 37%)
+    col_calendar, col_tray = st.columns([1.65, 1.0])
 
-    if not all_deliverables:
-        st.info("No rendered videos found yet. Use Section 1 to generate viral Shorts or Section 2 to generate Long-format highlight videos.")
-    else:
-        # Filter options
-        filter_type = st.radio(
-            "Filter Videos by Category:",
-            options=["All Videos", "🎬 Viral Shorts (9:16)", "🎞️ Long Format Videos (16:9)"],
-            horizontal=True,
-            key="lib_filter_radio"
-        )
+    # ==========================================
+    # LEFT COLUMN: 7-DAY INTERACTIVE CALENDAR
+    # ==========================================
+    with col_calendar:
+        st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
+        st.markdown(f"<div class='pro-card-header'><span>Interactive Content Calendar</span><span class='pro-badge badge-blue'>{len(schedule_data)} Total Scheduled</span></div>", unsafe_allow_html=True)
 
-        filtered = all_deliverables
-        if filter_type == "🎬 Viral Shorts (9:16)":
-            filtered = [d for d in all_deliverables if not d["is_long_video"]]
-        elif filter_type == "🎞️ Long Format Videos (16:9)":
-            filtered = [d for d in all_deliverables if d["is_long_video"]]
+        # 7 Weekday Columns
+        day_cols = st.columns(7)
+        weekday_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
-        st.write("")
+        for idx, (d_col, day_obj) in enumerate(zip(day_cols, week_days)):
+            day_str = day_obj.strftime("%Y-%m-%d")
+            is_today = (day_obj == today)
 
-        for v_item in filtered:
-            v_path = Path(v_item["path"])
-            v_name = v_item["name"]
-            v_size = v_item["size_mb"]
-            is_long = v_item["is_long_video"]
-            badge_class = "badge-purple" if is_long else "badge-green"
-
-            with st.container():
+            with d_col:
+                header_style = "background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;" if is_today else "background: #f8fafc; color: #475569; border: 1px solid #e2e8f0;"
                 st.markdown(
-                    f"<div style='background: #0f131d; border: 1px solid #1c2230; border-radius: 8px; padding: 14px; margin-bottom: 12px;'>"
-                    f"<div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;'>"
-                    f"<strong>{v_name}</strong>"
-                    f"<span class='pro-badge {badge_class}'>{v_item['category']}</span>"
+                    f"<div style='border-radius: 8px; padding: 6px 4px; text-align: center; margin-bottom: 8px; {header_style}'>"
+                    f"<div style='font-size: 0.72rem; text-transform: uppercase; font-weight: 700;'>{weekday_names[idx]}</div>"
+                    f"<div style='font-size: 1rem; font-weight: 800;'>{day_obj.day}</div>"
                     f"</div>",
                     unsafe_allow_html=True
                 )
 
-                c_v_play, c_v_actions = st.columns([1.2, 1])
+                # Time slots for each day
+                for slot_time in DAILY_SLOTS:
+                    slot_key = scheduler.make_slot_key(day_str, slot_time)
+                    slot_entry = schedule_data.get(slot_key)
 
-                with c_v_play:
-                    render_video_player(v_path, key_prefix=f"lib_item_{v_path.stem}")
+                    if slot_entry:
+                        v_name = slot_entry.get("title", slot_entry.get("video_name", "Short"))[:18]
+                        status = slot_entry.get("status", "scheduled")
+                        is_pub = (status == "published")
+                        badge_color = "#059669" if is_pub else "#2563eb"
+                        slot_bg = "#ecfdf5" if is_pub else "#eff6ff"
+                        slot_border = "#a7f3d0" if is_pub else "#bfdbfe"
 
-                with c_v_actions:
-                    st.markdown(f"**Size:** `{v_size:.2f} MB`")
-                    st.markdown(f"**Path:** `{v_path}`")
+                        st.markdown(
+                            f"<div style='background: {slot_bg}; border: 1px solid {slot_border}; border-left: 3px solid {badge_color}; border-radius: 6px; padding: 6px 4px; margin-bottom: 6px;'>"
+                            f"<div style='font-size: 0.68rem; font-weight: 700; color: #64748b; display: flex; justify-content: space-between;'>"
+                            f"<span>{slot_time}</span><span>{'✅' if is_pub else '📅'}</span>"
+                            f"</div>"
+                            f"<div style='font-size: 0.75rem; font-weight: 700; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;' title='{slot_entry.get('title')}'>{v_name}</div>"
+                            f"</div>",
+                            unsafe_allow_html=True
+                        )
 
-                    # Social quick publish with content-accurate metadata
-                    meta_copy = exporter.get_clip_metadata(v_path)
-                    c_act_yt, c_act_ig = st.columns(2)
-                    with c_act_yt:
-                        if st.button("🚀 YouTube", key=f"lib_pub_yt_{v_path.stem}", use_container_width=True):
+                        # Small action popover / expander
+                        with st.expander(f"⚙️ {slot_time}", expanded=False):
+                            st.caption(f"**Title:** {slot_entry.get('title')}")
+                            st.caption(f"**Caption:** {slot_entry.get('caption', '')[:100]}...")
+                            if st.button("🚀 Post Now", key=f"btn_cal_post_{slot_key}", use_container_width=True):
+                                with st.spinner("Publishing scheduled video via live browser..."):
+                                    res = scheduler.publish_slot_now(slot_key)
+                                    if res.get("success"):
+                                        st.success("Successfully published to connected accounts!")
+                                    else:
+                                        st.error("Publish note: Check social accounts status.")
+                                    st.rerun()
+
+                            if st.button("❌ Unschedule", key=f"btn_cal_unsched_{slot_key}", type="secondary", use_container_width=True):
+                                scheduler.unschedule_slot(day_str, slot_time)
+                                st.toast(f"Unscheduled {slot_time} on {day_str}", icon="🗑️")
+                                st.rerun()
+                    else:
+                        st.markdown(
+                            f"<div style='background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 6px 2px; margin-bottom: 6px; text-align: center; color: #94a3b8; font-size: 0.68rem;'>"
+                            f"{slot_time}"
+                            f"</div>",
+                            unsafe_allow_html=True
+                        )
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        # Quick Manual Slot Booking Form
+        with st.expander("➕ Schedule Any Short to Specific Date & Time Slot", expanded=False):
+            if not unscheduled_shorts:
+                st.info("No unscheduled shorts ready in library. Generate new shorts in Section 1 or catch viral reels in Section 2.")
+            else:
+                c_sb1, c_sb2, c_sb3 = st.columns([1.5, 1, 1])
+                with c_sb1:
+                    chosen_short_item = st.selectbox(
+                        "Select Ready Short to Schedule:",
+                        options=unscheduled_shorts,
+                        format_func=lambda s: f"{s['title'][:40]} ({s['size_mb']} MB)",
+                        key="sel_manual_sched_short"
+                    )
+                with c_sb2:
+                    chosen_date = st.date_input("Target Date:", value=today, key="inp_manual_sched_date")
+                with c_sb3:
+                    chosen_slot = st.selectbox("Target Slot:", options=DAILY_SLOTS, key="sel_manual_sched_slot")
+
+                if st.button("📅 Confirm & Schedule Short", type="primary", use_container_width=True, key="btn_confirm_manual_sched"):
+                    date_key_str = chosen_date.strftime("%Y-%m-%d")
+                    res = scheduler.schedule_short(
+                        date_str=date_key_str,
+                        time_slot=chosen_slot,
+                        video_path=chosen_short_item["path"],
+                        platforms=["youtube", "instagram"]
+                    )
+                    if res.get("success"):
+                        st.success(f"🎉 Successfully scheduled '{chosen_short_item['title']}' for {chosen_slot} on {date_key_str}!")
+                        st.rerun()
+
+    # ==========================================
+    # RIGHT COLUMN: READY UNSCHEDULED SHORTS TRAY
+    # ==========================================
+    with col_tray:
+        st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='pro-card-header'>"
+            f"<span>Ready to Publish</span>"
+            f"<span class='pro-badge badge-green'>{len(unscheduled_shorts)} Ready</span>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+
+        tray_search = st.text_input("🔍 Search ready shorts...", placeholder="Search by title or topic...", key="tray_search_query")
+
+        display_shorts = unscheduled_shorts
+        if tray_search and tray_search.strip():
+            q = tray_search.strip().lower()
+            display_shorts = [s for s in unscheduled_shorts if q in s["title"].lower() or q in s["caption"].lower()]
+
+        if not display_shorts:
+            st.info("No unscheduled shorts found. Renders from Section 1 & Section 2 automatically show up here.")
+        else:
+            for s_idx, s_item in enumerate(display_shorts):
+                s_path = Path(s_item["path"])
+                s_title = s_item["title"]
+                s_score = s_item["viral_score"]
+
+                st.markdown(
+                    f"<div class='short-item-card'>"
+                    f"<div style='display: flex; justify-content: space-between; align-items: start; gap: 8px; margin-bottom: 6px;'>"
+                    f"<div style='font-size: 0.88rem; font-weight: 700; color: #0f172a; line-height: 1.3;'>{s_title[:45]}</div>"
+                    f"<span class='pro-badge badge-blue'>{s_score}% Viral</span>"
+                    f"</div>"
+                    f"<div style='font-size: 0.74rem; color: #64748b; margin-bottom: 8px;'>"
+                    f"📁 <code>{s_item['name']}</code> • {s_item['size_mb']} MB"
+                    f"</div>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+
+                # Expandable preview player and schedule actions
+                with st.expander(f"🎬 Preview & Schedule: {s_title[:28]}...", expanded=False):
+                    render_video_player(s_path, key_prefix=f"tray_prev_{s_path.stem}")
+
+                    # Stored content-accurate caption display
+                    st.markdown("**📝 Stored AI Caption & Hashtags:**")
+                    st.caption(f"{s_item.get('caption', '')[:140]}...")
+                    st.code(s_item.get("hashtags", "#shorts #viral"), language=None)
+
+                    # 1-Click Schedule Action
+                    st.markdown("**📅 Schedule to Upcoming Slot:**")
+                    c_sc_d, c_sc_t = st.columns(2)
+                    with c_sc_d:
+                        sc_date = st.date_input("Date:", value=today, key=f"tray_d_{s_idx}_{s_path.stem}")
+                    with c_sc_t:
+                        sc_time = st.selectbox("Slot:", options=DAILY_SLOTS, key=f"tray_t_{s_idx}_{s_path.stem}")
+
+                    if st.button("📅 Schedule Video to Slot", key=f"btn_sched_tray_{s_idx}_{s_path.stem}", type="primary", use_container_width=True):
+                        d_str = sc_date.strftime("%Y-%m-%d")
+                        res = scheduler.schedule_short(
+                            date_str=d_str,
+                            time_slot=sc_time,
+                            video_path=str(s_path)
+                        )
+                        if res.get("success"):
+                            st.toast(f"Scheduled '{s_title[:30]}' to {sc_time} on {d_str}!", icon="📅")
+                            st.rerun()
+
+                    # Quick Direct Post & Delete
+                    c_dir_yt, c_dir_del = st.columns(2)
+                    with c_dir_yt:
+                        if st.button("🚀 Post YouTube Now", key=f"btn_tray_yt_{s_path.stem}", use_container_width=True):
                             res = publisher.publish_to_youtube(
-                                video_path=str(v_path),
-                                title=meta_copy.get("title", v_path.stem),
-                                description=meta_copy.get("instagram_caption", "") or meta_copy.get("caption", ""),
-                                tags=meta_copy.get("hashtags", "")
+                                video_path=str(s_path),
+                                title=s_item["title"],
+                                description=s_item["caption"],
+                                tags=s_item["hashtags"]
                             )
                             if res.get("success"):
                                 st.success(f"Published: {res.get('url')}")
                             else:
                                 st.error(f"Error: {res.get('error')}")
+                    with c_dir_del:
+                        if st.button("🗑️ Delete Short", key=f"btn_tray_del_{s_path.stem}", type="secondary", use_container_width=True):
+                            if workspace_cleaner.delete_single_deliverable(str(s_path)):
+                                st.toast(f"Deleted {s_item['name']}", icon="🗑️")
+                                st.rerun()
 
-                    with c_act_ig:
-                        if not is_long:
-                            if st.button("🚀 Instagram", key=f"lib_pub_ig_{v_path.stem}", use_container_width=True):
-                                full_c = f"{meta_copy.get('instagram_caption', '') or meta_copy.get('caption', '')}\n\n{meta_copy.get('hashtags', '')}".strip()
-                                res = publisher.publish_to_instagram(
-                                    video_url_or_path=str(v_path),
-                                    caption=full_c
-                                )
-                                if res.get("success"):
-                                    st.success(f"Published: {res.get('url')}")
-                                else:
-                                    st.error(f"Error: {res.get('error')}")
-                        else:
-                            st.caption("*(16:9 Format for YouTube / Facebook)*")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-                    st.markdown("---")
-                    # Single-Click Video Deletion for Unwanted Shorts / Videos
-                    if st.button("🗑️ Delete Video from Disk", key=f"btn_del_vid_{v_path.stem}", type="secondary", use_container_width=True):
-                        if workspace_cleaner.delete_single_deliverable(str(v_path)):
-                            st.toast(f"Deleted {v_name} and freed {v_size:.1f} MB!", icon="🗑️")
-                            st.rerun()
-                        else:
-                            st.error(f"Failed to delete {v_name}")
+    # 3. Disk Storage & Deep Memory Clean Telemetry
+    storage_info = workspace_cleaner.get_storage_stats()
+    all_deliverables = workspace_cleaner.list_generated_deliverables()
 
-                st.markdown("</div>", unsafe_allow_html=True)
+    with st.expander("💾 Disk Storage Telemetry & Memory Purge Manager", expanded=False):
+        c_m1, c_m2, c_m3 = st.columns(3)
+        with c_m1:
+            st.metric(
+                label="Raw Source Videos",
+                value=f"{storage_info['downloads_size_gb']:.2f} GB",
+                delta=f"{storage_info['downloads_count']} downloaded files"
+            )
+        with c_m2:
+            st.metric(
+                label="Temp Processing Cache",
+                value=f"{storage_info['temp_size_mb']:.1f} MB",
+                delta=f"{storage_info['temp_count']} temp audio/ass files"
+            )
+        with c_m3:
+            st.metric(
+                label="Rendered Video Deliverables",
+                value=f"{storage_info['output_size_mb']:.1f} MB",
+                delta=f"{len(all_deliverables)} finished videos"
+            )
 
-    st.markdown("</div>", unsafe_allow_html=True)
+        st.write("")
+        col_cl1, col_cl2 = st.columns(2)
+        with col_cl1:
+            if st.button("🧹 Clean Temporary Processing Cache Now", use_container_width=True, key="btn_clean_temp_cache"):
+                res = workspace_cleaner.clean_temporary_files()
+                st.success(f"Cleaned {res['deleted_count']} temporary files. Freed {res['freed_mb']:.1f} MB.")
+                st.rerun()
+        with col_cl2:
+            if st.button("🚀 Deep Purge Raw Source Videos (Free GBs)", use_container_width=True, key="btn_purge_downloads", help="Deletes heavy downloaded stream source videos while keeping your rendered Shorts and Long videos 100% safe."):
+                res = workspace_cleaner.clean_all_downloads(preserve_test_sample=True)
+                st.success(f"Purged {res['deleted_count']} bulky downloads. Freed {res['freed_gb']:.2f} GB of disk space!")
+                st.rerun()
