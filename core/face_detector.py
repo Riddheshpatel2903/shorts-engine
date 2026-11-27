@@ -516,6 +516,7 @@ class FaceDetector:
                 "facecam_detected": False,
                 "facecam_box": None,
                 "facecam_quadrant": None,
+                "recommended_layout": "CINEMATIC_BLUR",
                 "source_width": width,
                 "source_height": height,
                 "confidence": 0.85
@@ -566,6 +567,7 @@ class FaceDetector:
                 "facecam_detected": False,
                 "facecam_box": None,
                 "facecam_quadrant": None,
+                "recommended_layout": "CINEMATIC_BLUR",
                 "podcast_speakers": {
                     "has_two_speakers": True,
                     "speaker_left": {"x": spk1_x, "y": spk1_y, "width": box_w, "height": box_h},
@@ -629,6 +631,7 @@ class FaceDetector:
                     "width": crop_w,
                     "height": crop_h
                 },
+                "recommended_layout": "STREAMER_SPLIT",
                 "source_width": width,
                 "source_height": height,
                 "confidence": 0.90

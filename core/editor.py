@@ -73,7 +73,8 @@ class VideoEditor:
         interactive_overlay: Optional[str] = None,
         punchline_badge: Optional[str] = None,
         punchline_time: Optional[float] = None,
-        has_sfx_track: bool = False
+        has_sfx_track: bool = False,
+        enable_hook_banner: bool = False
     ) -> Tuple[str, str, str]:
         """
         Constructs the FFmpeg -filter_complex string for 1080x1920 9:16 vertical composition.
@@ -98,17 +99,18 @@ class VideoEditor:
         # Resolve template if AUTO
         mode = template.upper()
         if mode == "AUTO":
-            recommended = layout_info.get("recommended_layout")
-            if recommended and recommended.upper() in ("FULL_VERTICAL_STRIP", "STREAMER_SPLIT", "PODCAST_SPLIT", "CINEMATIC_BLUR"):
-                mode = recommended.upper()
-            elif src_h >= src_w:
+            has_corner_facecam = bool(
+                layout_info.get("facecam_detected")
+                or (classification == "STREAMER_FACECAM" and facecam_box)
+                or layout_info.get("is_corner_facecam")
+            )
+            # 1. Video is already vertical (e.g. mobile 9:16 recording)
+            if src_h >= src_w:
                 mode = "FULL_VERTICAL_STRIP"
-            elif classification == "PODCAST" or podcast_speakers:
-                mode = "PODCAST_SPLIT"
-            elif classification == "STREAMER_FACECAM" and facecam_box:
+            # 2. Stream with a streamer facecam in a corner -> Split screen (Facecam Top + Stream Bottom)
+            elif has_corner_facecam and (facecam_box or layout_info.get("facecam_box")):
                 mode = "STREAMER_SPLIT"
-            elif classification == "TALKING_HEAD" or layout_info.get("person_in_frame"):
-                mode = "FULL_VERTICAL_STRIP"
+            # 3. Normal Video (podcasts, interviews, landscape video, gameplay, general) -> Video on screen (CINEMATIC_BLUR)
             else:
                 mode = "CINEMATIC_BLUR"
 
@@ -273,23 +275,19 @@ class VideoEditor:
             current_v = "[framed]"
 
         else:
-            # Layout: CINEMATIC_BLUR (Default for wide gameplay & landscapes)
+            # Layout: CINEMATIC_BLUR (Normal video placed cleanly on screen with blurred backdrop)
             # Background: high-aesthetic blurred motion backdrop
-            # Foreground: 16:9 source scaled to 1080 width, centered vertically with crisp accent edge dividers
+            # Foreground: Source scaled to 1080 width, centered vertically without artificial borders
             bg_filter = (
                 f"[0:v]scale={self.width}:{self.height}:force_original_aspect_ratio=increase,"
                 f"crop={self.width}:{self.height},"
-                f"boxblur=25:5,eq=brightness=-0.15[bg]"
+                f"boxblur=25:5,eq=brightness=-0.18[bg]"
             )
             fg_filter = (
-                f"[0:v]scale={self.width}:-1[fg]"
+                f"[0:v]scale={self.width}:-2:flags=lanczos[fg]"
             )
-            # 16:9 at 1080 width is 1080x608, centered at y = (1920 - 608) // 2 = 656
-            game_y = (self.height - 608) // 2
             overlay_filter = (
-                f"[bg][fg]overlay=0:{game_y}[comp1];"
-                f"[comp1]drawbox=x=0:y={game_y-2}:w={self.width}:h=2:color=0x00E5FF@0.7:t=fill,"
-                f"drawbox=x=0:y={game_y+608}:w={self.width}:h=2:color=0x00E5FF@0.7:t=fill[framed]"
+                f"[bg][fg]overlay=0:(H-h)/2[framed]"
             )
             filters.extend([bg_filter, fg_filter, overlay_filter])
             current_v = "[framed]"
@@ -313,10 +311,10 @@ class VideoEditor:
             filters.append(sub_filter)
             current_v = "[v_sub]"
 
-        # Add Professional Motion Graphics (Retention Progress Bar & Floating Top Hook Card)
+        # Add Professional Motion Graphics (Subtle Bottom Progress Bar; optional text cards only if explicitly provided)
         if enable_motion_graphics:
-            # 1. Top Glassmorphic Hook Banner (First 5 seconds)
-            if hook_text and hook_text.strip():
+            # 1. Top Glassmorphic Hook Banner (First 5 seconds) - Only render if explicitly enabled
+            if hook_text and hook_text.strip() and enable_hook_banner:
                 clean_hook = re.sub(r"[^\w\s\-\:\.\,\!]", "", hook_text).strip().upper()[:36]
                 if clean_hook:
                     font_file = "C\\:/Windows/Fonts/arialbd.ttf" if Path("C:/Windows/Fonts/arialbd.ttf").exists() else ""
@@ -340,8 +338,8 @@ class VideoEditor:
                 filters.append(pbar_filter)
                 current_v = "[pbar_v]"
 
-            # 3. Interactive Call-To-Action Overlay Card (TikTok / Reels engagement sticker)
-            if interactive_overlay and interactive_overlay.strip():
+            # 3. Interactive Call-To-Action Overlay Card - Only if explicitly passed and not "None"
+            if interactive_overlay and interactive_overlay.strip() and interactive_overlay.strip().lower() != "none":
                 clean_interactive = re.sub(r"[^\w\s\-\:\.\,\!\?\#\<\>\@\']", "", interactive_overlay).strip().upper()[:44]
                 if clean_interactive:
                     font_file = "C\\:/Windows/Fonts/seguisb.ttf" if Path("C:/Windows/Fonts/seguisb.ttf").exists() else ("C\\:/Windows/Fonts/arialbd.ttf" if Path("C:/Windows/Fonts/arialbd.ttf").exists() else "")
@@ -355,8 +353,8 @@ class VideoEditor:
                     filters.append(interactive_filter)
                     current_v = "[interact_v]"
 
-            # 4. Punchline Meme Reaction Badge Pop-up (Flashes during comedic punchline delivery)
-            if punchline_badge and punchline_badge.strip():
+            # 4. Punchline Meme Reaction Badge Pop-up - Only if explicitly passed and not "None"
+            if punchline_badge and punchline_badge.strip() and punchline_badge.strip().lower() != "none":
                 clean_badge = re.sub(r"[^\w\s\-\:\.\,\!]", "", punchline_badge).strip().upper()[:24]
                 if clean_badge:
                     font_file = "C\\:/Windows/Fonts/seguibl.ttf" if Path("C:/Windows/Fonts/seguibl.ttf").exists() else ("C\\:/Windows/Fonts/arialbd.ttf" if Path("C:/Windows/Fonts/arialbd.ttf").exists() else "")

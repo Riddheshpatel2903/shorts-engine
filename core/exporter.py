@@ -167,7 +167,8 @@ class VideoExporter:
             interactive_overlay=clip_info.get("interactive_overlay"),
             punchline_badge=clip_info.get("punchline_badge"),
             punchline_time=rel_p_time,
-            has_sfx_track=(sfx_track_path is not None and sfx_track_path.exists())
+            has_sfx_track=(sfx_track_path is not None and sfx_track_path.exists()),
+            enable_hook_banner=bool(clip_info.get("enable_hook_banner", False))
         )
 
         # Base FFmpeg command
@@ -262,8 +263,8 @@ class VideoExporter:
         style_preset: str = "hormozi",
         enable_motion_graphics: bool = True,
         enable_sfx: bool = True,
-        interactive_overlay: Optional[str] = "💀 WAIT FOR THE END...",
-        punchline_badge: Optional[str] = "DEAD",
+        interactive_overlay: Optional[str] = None,
+        punchline_badge: Optional[str] = None,
         progress_callback: Optional[Any] = None
     ) -> List[Dict[str, Any]]:
         """
@@ -315,6 +316,7 @@ class VideoExporter:
                 "hook_text": hook,
                 "interactive_overlay": interactive_overlay,
                 "punchline_badge": punchline_badge,
+                "enable_hook_banner": False,
                 "punchline_time": p_time,
                 "is_comedy_or_reaction": clip.get("is_comedy_or_reaction", True),
                 "superchat_card": clip.get("superchat_card")

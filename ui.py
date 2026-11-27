@@ -574,7 +574,6 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                         prog_bar.progress(cur / total)
 
                     layout_info = analysis.get("layout", {})
-                    badge_val = "DEAD" if target_genre in ["comedy", "uncensored"] else "VIOLATION"
                     batch_rendered = exporter.batch_render_shorts(
                         source_path=source_input_path,
                         clips=moments,
@@ -583,8 +582,8 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                         style_preset="hormozi",
                         enable_motion_graphics=True,
                         enable_sfx=True,
-                        interactive_overlay="💀 WAIT FOR THE END...",
-                        punchline_badge=badge_val,
+                        interactive_overlay=None,
+                        punchline_badge=None,
                         progress_callback=batch_progress_ui
                     )
 
@@ -802,11 +801,11 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
 
             layout_format = {
                 "AUTO": f"🤖 Auto-Adaptive ({rec_mode})",
-                "FULL_VERTICAL_STRIP": "📱 Full Vertical Strip (Person Centered + Headroom Tracked)",
-                "CINEMATIC_BLUR": "🎬 Cinematic 16:9 (Full Game View + Blurred Backdrop)",
-                "STREAMER_SPLIT": "✂️ Pro Gamer Dual-View (Facecam Top + Full Game HUD)",
-                "STREAMER_ZOOMED_GAME": "✂️ Dual View (Facecam Top + Zoomed Game Action)",
-                "PODCAST_SPLIT": "🎙️ Podcast Split (Host Top / Guest Bottom)"
+                "CINEMATIC_BLUR": "🎬 Normal Video on Screen (Clean 16:9 View + Ambient Backdrop)",
+                "STREAMER_SPLIT": "✂️ Streamer Dual-Split (Facecam Top + Stream Content Bottom)",
+                "FULL_VERTICAL_STRIP": "📱 Full-Screen Vertical 9:16 (Centered Action)",
+                "STREAMER_ZOOMED_GAME": "✂️ Dual View (Facecam Top + Zoomed Stream Action)",
+                "PODCAST_SPLIT": "🎙️ Manual Podcast Split (Host Top / Guest Bottom)"
             }
 
             comp_mode = st.selectbox(
@@ -943,7 +942,7 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                     "⚡ TAG A FRIEND WHO DOES THIS 🤣",
                     "✍️ Custom Interactive Prompt..."
                 ]
-                default_ia_idx = 1 if is_comm else 0
+                default_ia_idx = 0  # Default to None (clean video with captions only)
                 ia_choice = st.selectbox(
                     "Interactive Floating CTA Card:",
                     options=ia_options,
@@ -961,24 +960,21 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
 
             with col_ia2:
                 badge_options = [
-                    "Auto (Based on Joke)",
+                    "None",
                     "💀 DEAD",
                     "😂 NO WAY",
                     "🤡 CAUGHT IN 4K",
                     "🔥 VIOLATION",
-                    "👑 GOAT",
-                    "None"
+                    "👑 GOAT"
                 ]
                 badge_choice = st.selectbox(
                     "Punchline Meme Reaction Stamp:",
                     options=badge_options,
-                    index=0 if is_comm else 6,
+                    index=0,  # Default to None (clean video)
                     key=f"sel_badge_{clip_tag}",
                     help="Pops up a meme reaction stamp right when the punchline / funniest joke lands."
                 )
-                if badge_choice.startswith("Auto"):
-                    final_badge = "DEAD" if is_comm else None
-                elif badge_choice == "None":
+                if badge_choice == "None":
                     final_badge = None
                 else:
                     final_badge = badge_choice.replace("💀", "").replace("😂", "").replace("🤡", "").replace("🔥", "").replace("👑", "").strip()
