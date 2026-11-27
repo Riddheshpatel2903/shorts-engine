@@ -22,8 +22,26 @@ from core.cleanup_profiles import release_profile_lock, release_all_locks
 logger = logging.getLogger("ViralShortsEngine.Publisher")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-PROFILES_DIR = Path(WORKSPACE_DIR) / "browser_profile"
 SETTINGS_FILE = Path(WORKSPACE_DIR) / "social_settings.json"
+
+
+def resolve_browser_profiles_dir() -> Path:
+    """Finds the browser profile directory that contains valid user sessions."""
+    candidates = [
+        Path(WORKSPACE_DIR) / "browser_profile",
+        BASE_DIR / "workspace" / "browser_profile",
+        Path(r"C:\Users\patel\OneDrive\Desktop\Personal_Works\ViralShortsEngine\workspace\browser_profile")
+    ]
+    for cand in candidates:
+        if cand.exists():
+            yt = cand / "youtube"
+            ig = cand / "instagram"
+            if (yt.exists() and any(yt.iterdir())) or (ig.exists() and any(ig.iterdir())):
+                return cand
+    return Path(WORKSPACE_DIR) / "browser_profile"
+
+
+PROFILES_DIR = resolve_browser_profiles_dir()
 
 STEALTH_SCRIPT = """
     Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
@@ -286,7 +304,10 @@ class PlaywrightPublisher:
                 context.add_init_script(STEALTH_SCRIPT)
                 page = context.pages[0] if context.pages else context.new_page()
                 page.goto("https://studio.youtube.com", timeout=60000)
-                page.wait_for_load_state("networkidle")
+                try:
+                    page.wait_for_load_state("domcontentloaded", timeout=20000)
+                except Exception:
+                    pass
 
                 # Verify if logged in
                 if "accounts.google.com" in page.url or "signin" in page.url:
@@ -329,101 +350,132 @@ class PlaywrightPublisher:
                     desc_box.click()
                     desc_box.type(full_desc[:4000], delay=5)
 
-                # 3. Not Made for Kids
+                # 3. Not Made for Kids (Scroll into view to ensure it is visible and clickable)
                 try:
                     not_for_kids = page.locator("tp-yt-paper-radio-button[name='VIDEO_MADE_FOR_KIDS_NOT_MFK'], [name='VIDEO_MADE_FOR_KIDS_NOT_MFK']").first
+                    not_for_kids.scroll_into_view_if_needed(timeout=5000)
                     not_for_kids.click(timeout=8000)
-                except Exception:
-                    pass
+                    time_sleep(800)
+                except Exception as err:
+                    logger.warning(f"Could not click not-for-kids: {err}")
 
-                # Next through Video Elements and Checks
-                for _ in range(3):
-                    next_btn = page.locator("#next-button, button:has-text('Next')").first
-                    next_btn.click(timeout=10000)
-                    time_sleep(1500)
+                # 4. Advance through Wizard Steps (Details -> Monetization/Elements -> Checks -> Visibility)
+                for _ in range(6):
+                    vis_check = page.locator("tp-yt-paper-radio-button[name='PUBLIC'], [name='PUBLIC']").first
+                    if vis_check.is_visible():
+                        break
+                    next_btn = page.locator("#next-button, ytcp-button#next-button, button:has-text('Next')").first
+                    if next_btn.is_visible(timeout=3000):
+                        next_btn.click()
+                        time_sleep(1500)
 
-                # 4. Set Visibility (Public / Unlisted)
+                # 5. Set Visibility (Public / Unlisted / Private)
+                vis_btn = None
                 if upload_privacy == "public":
-                    page.locator("tp-yt-paper-radio-button[name='PUBLIC'], [name='PUBLIC']").first.click(timeout=8000)
+                    vis_btn = page.locator("tp-yt-paper-radio-button[name='PUBLIC'], [name='PUBLIC']").first
                 elif upload_privacy == "unlisted":
-                    page.locator("tp-yt-paper-radio-button[name='UNLISTED'], [name='UNLISTED']").first.click(timeout=8000)
+                    vis_btn = page.locator("tp-yt-paper-radio-button[name='UNLISTED'], [name='UNLISTED']").first
                 else:
-                    page.locator("tp-yt-paper-radio-button[name='PRIVATE'], [name='PRIVATE']").first.click(timeout=8000)
+                    vis_btn = page.locator("tp-yt-paper-radio-button[name='PRIVATE'], [name='PRIVATE']").first
 
-                time_sleep(1000)
+                if vis_btn and vis_btn.is_visible(timeout=5000):
+                    vis_btn.scroll_into_view_if_needed()
+                    vis_btn.click()
+                    time_sleep(1000)
 
-                # 5. Extract Video URL if available before publishing
-                yt_link = "https://youtube.com/shorts"
+                # 6. Extract Initial Video URL if rendered
+                yt_link = ""
                 try:
-                    link_elem = page.locator("a.ytcp-video-info, a[href*='youtu.be']").first
-                    if link_elem.is_visible():
-                        yt_link = link_elem.get_attribute("href") or yt_link
+                    link_elems = page.locator("a.ytcp-video-info, a[href*='youtu.be'], span.video-url-fadeable a").all()
+                    for l_el in link_elems:
+                        h = l_el.get_attribute("href")
+                        if h and ("youtu.be" in h or "youtube.com/shorts" in h):
+                            yt_link = h
+                            break
                 except Exception:
                     pass
 
-                # 6. Click Done / Publish
-                done_btn = page.locator("#done-button, button:has-text('Save'), button:has-text('Publish')").first
-                done_btn.click(timeout=10000)
-                logger.info("Publish clicked on YouTube! Keeping browser running and monitoring upload progress until 100% complete...")
+                # 7. Click Done / Publish
+                done_btn = page.locator("#done-button, ytcp-button#done-button, button:has-text('Publish'), button:has-text('Save')").first
+                done_btn.wait_for(state="visible", timeout=10000)
+                done_btn.click()
+                logger.info("Publish clicked on YouTube Studio! Actively monitoring upload and processing...")
                 if progress_callback:
                     progress_callback("Publish clicked! Actively monitoring upload progress... Keeping browser open.")
 
-                # Explicitly wait for YouTube to finish uploading and processing
-                max_wait = 360  # Up to 6 minutes for large files / slow connections
+                # 8. Actively monitor upload progress until 100% verified
+                max_wait = 360  # Up to 6 minutes
                 start_t = time.time()
                 upload_done = False
+                last_status_msg = ""
 
                 while time.time() - start_t < max_wait:
                     elapsed = int(time.time() - start_t)
 
-                    # Read status text from YouTube progress indicator
+                    # Try to capture updated share link from modal
+                    try:
+                        link_elems = page.locator("ytcp-video-share-dialog a[href*='youtu.be'], a.ytcp-video-info, a[href*='youtu.be']").all()
+                        for l_el in link_elems:
+                            h = l_el.get_attribute("href")
+                            if h and "youtu" in h:
+                                yt_link = h
+                                break
+                    except Exception:
+                        pass
+
+                    # Read progress text from status components
                     prog_loc = page.locator("ytcp-video-upload-progress, ytcp-uploads-dialog, ytcp-video-share-dialog").first
                     prog_text = ""
                     try:
-                        if prog_loc.is_visible(timeout=500):
+                        if prog_loc.is_visible(timeout=400):
                             prog_text = prog_loc.inner_text().strip()
                     except Exception:
                         pass
 
-                    # Extract live short share link
-                    try:
-                        link_elem = page.locator("a.ytcp-video-info, a[href*='youtu.be']").first
-                        if link_elem.is_visible(timeout=300):
-                            h = link_elem.get_attribute("href")
-                            if h and "youtu" in h:
-                                yt_link = h
-                    except Exception:
-                        pass
-
-                    prog_lower = prog_text.lower()
                     if prog_text:
+                        last_status_msg = prog_text
                         logger.info(f"YouTube upload status ({elapsed}s elapsed): {prog_text[:90]}")
                         if progress_callback and elapsed % 5 == 0:
                             progress_callback(f"YouTube status ({elapsed}s): {prog_text[:80]}")
 
-                    # Check if upload/processing completed or checks done
+                    prog_lower = prog_text.lower()
+                    is_still_uploading = "uploading" in prog_lower or "%" in prog_text
+
+                    # Dedicated share dialog indicates publication is processed
+                    share_dialog = page.locator("ytcp-video-share-dialog").first
+                    share_dialog_open = False
+                    try:
+                        share_dialog_open = share_dialog.is_visible(timeout=400)
+                    except Exception:
+                        pass
+
+                    # Definite completion signals
                     is_finished = any(k in prog_lower for k in [
                         "upload complete", "checks complete", "processing will begin",
                         "processing hd", "processing sd", "video published", "short published"
                     ])
 
-                    close_btn = page.locator("ytcp-video-share-dialog #close-button, [aria-label='Close'], button:has-text('Close')").first
-                    share_dialog_open = False
-                    try:
-                        share_dialog_open = close_btn.is_visible(timeout=400)
-                    except Exception:
-                        pass
-
-                    if is_finished or (share_dialog_open and "uploading" not in prog_lower and elapsed > 8):
+                    if (is_finished or share_dialog_open) and not is_still_uploading and elapsed > 5:
                         upload_done = True
-                        logger.info(f"✅ YouTube Short upload verified complete on screen ({elapsed}s elapsed)! Final URL: {yt_link}")
+                        logger.info(f"✅ YouTube Short upload verified complete ({elapsed}s elapsed)! Final URL: {yt_link or 'https://studio.youtube.com'}")
                         if progress_callback:
                             progress_callback(f"✅ YouTube Short uploaded and confirmed ({elapsed}s)! Keeping browser open for display...")
                         break
 
                     time_sleep(2500)
 
-                # Keep YouTube browser open for 15 seconds so user can visibly confirm completion on screen
+                # If upload did NOT finish or was rejected
+                if not upload_done:
+                    context.close()
+                    err_msg = f"YouTube upload could not be verified within {max_wait}s. Last status: {last_status_msg[:100] or 'Timed out'}"
+                    logger.error(err_msg)
+                    return {
+                        "success": False,
+                        "error": err_msg,
+                        "url": yt_link
+                    }
+
+                # Keep YouTube browser open for 15s so user can verify on screen
                 logger.info("Keeping YouTube browser window open for 15s so user can verify upload completion...")
                 time_sleep(15000)
 
@@ -437,10 +489,11 @@ class PlaywrightPublisher:
                     pass
 
                 context.close()
-                logger.info(f"Successfully published YouTube Short: {yt_link}")
+                final_url = yt_link if yt_link else "https://studio.youtube.com/channel/videos/upload"
+                logger.info(f"Successfully published YouTube Short: {final_url}")
                 return {
                     "success": True,
-                    "url": yt_link,
+                    "url": final_url,
                     "title": clean_title,
                     "message": "YouTube Short published successfully!"
                 }
@@ -553,7 +606,7 @@ class PlaywrightPublisher:
                 except Exception:
                     logger.debug("Instagram navigation container wait completed or timed out.")
 
-                # 1. Click Create button (Check comprehensive desktop and mobile selectors)
+                # 1. Click Create button
                 create_selectors = [
                     "svg[aria-label='New post']",
                     "svg[aria-label='New Post']",
@@ -583,7 +636,6 @@ class PlaywrightPublisher:
                         continue
 
                 if not create_clicked:
-                    # Final fallback: click via combined selector with generous timeout
                     fallback_loc = page.locator(", ".join(create_selectors)).first
                     fallback_loc.click(timeout=20000)
                     time_sleep(1500)
@@ -618,21 +670,21 @@ class PlaywrightPublisher:
                     except Exception:
                         pass
 
-                # 3. Handle Aspect Ratio (Select 9:16 or original)
+                # 3. Handle Aspect Ratio (Select Original or 9:16)
                 try:
                     crop_btn = page.locator("svg[aria-label='Select crop'], button:has-text('Select crop'), [aria-label='Select Crop']").first
                     if crop_btn.is_visible(timeout=2000):
                         crop_btn.click()
                         time_sleep(800)
-                        nine_sixteen = page.locator("button:has-text('9:16'), span:has-text('9:16'), div:has-text('9:16')").first
-                        if nine_sixteen.is_visible(timeout=2000):
-                            nine_sixteen.click()
+                        orig_or_916 = page.locator("button:has-text('Original'), span:has-text('Original'), button:has-text('9:16'), span:has-text('9:16')").first
+                        if orig_or_916.is_visible(timeout=2000):
+                            orig_or_916.click()
                             time_sleep(800)
                 except Exception:
                     pass
 
                 # 4. Click Next (to filter/cover)
-                next_btn1 = page.locator("div[role='button']:has-text('Next'), button:has-text('Next'), span:text-is('Next')").first
+                next_btn1 = page.locator("div[role='dialog'] div[role='button']:has-text('Next'), div[role='button']:has-text('Next'), button:has-text('Next')").first
                 next_btn1.wait_for(state="visible", timeout=15000)
                 next_btn1.click()
                 time_sleep(2500)
@@ -649,7 +701,7 @@ class PlaywrightPublisher:
                         pass
 
                 # Click Next (to caption)
-                next_btn2 = page.locator("div[role='button']:has-text('Next'), button:has-text('Next'), span:text-is('Next')").first
+                next_btn2 = page.locator("div[role='dialog'] div[role='button']:has-text('Next'), div[role='button']:has-text('Next'), button:has-text('Next')").first
                 next_btn2.wait_for(state="visible", timeout=15000)
                 next_btn2.click()
                 time_sleep(2500)
@@ -664,7 +716,7 @@ class PlaywrightPublisher:
                 time_sleep(1500)
 
                 # 6. Click Share
-                share_btn = page.locator("div[role='button']:has-text('Share'), button:has-text('Share'), span:text-is('Share')").first
+                share_btn = page.locator("div[role='dialog'] div[role='button']:has-text('Share'), div[role='button']:has-text('Share'), button:has-text('Share')").first
                 share_btn.wait_for(state="visible", timeout=15000)
                 share_btn.click()
                 logger.info("Share clicked! Instagram is actively uploading and transcoding video... Keeping browser open.")
@@ -672,10 +724,11 @@ class PlaywrightPublisher:
                     progress_callback("Share clicked! Instagram is actively uploading video... Keeping browser window open.")
                 time_sleep(3000)
 
-                # Explicit upload completion polling loop
+                # 7. Explicit upload completion polling loop (Wait for positive confirmation)
                 max_wait_seconds = 360  # Up to 6 minutes for video upload/processing
                 start_time = time.time()
                 upload_confirmed = False
+                upload_error_msg = ""
 
                 while time.time() - start_time < max_wait_seconds:
                     elapsed = int(time.time() - start_time)
@@ -710,7 +763,7 @@ class PlaywrightPublisher:
                             progress_callback(f"✅ Instagram Reel shared successfully ({elapsed}s)! Keeping window open for view...")
                         break
 
-                    # 2. Check for errors
+                    # 2. Check for explicit error notices
                     error_selectors = [
                         "text=/couldn't be shared/i",
                         "text=/something went wrong/i",
@@ -722,8 +775,8 @@ class PlaywrightPublisher:
                         try:
                             e_loc = page.locator(e_sel).first
                             if e_loc.is_visible(timeout=300):
-                                err_msg = e_loc.inner_text().strip()
-                                logger.error(f"Instagram reported an error: {err_msg}")
+                                upload_error_msg = e_loc.inner_text().strip()
+                                logger.error(f"Instagram reported an error: {upload_error_msg}")
                                 has_error = True
                                 break
                         except Exception:
@@ -746,20 +799,10 @@ class PlaywrightPublisher:
                         if progress_callback and elapsed % 5 == 0:
                             progress_callback(f"Instagram uploading & processing ({elapsed}s elapsed)...")
                     else:
-                        # Check if modal closed cleanly returning to feed after reasonable time
-                        try:
-                            dialog_open = page.locator("div[role='dialog']").first.is_visible(timeout=300)
-                            if not dialog_open and elapsed > 15:
-                                upload_confirmed = True
-                                logger.info(f"Instagram upload modal closed cleanly ({elapsed}s elapsed). Post shared!")
-                                break
-                        except Exception:
-                            pass
-
-                        # If still on caption screen and Share button sits there, retry click after 15s
+                        # If still on caption screen and Share button sits there, retry click after 15s or 30s
                         if elapsed in [15, 30]:
                             try:
-                                s_btn = page.locator("div[role='button']:has-text('Share'), button:has-text('Share')").first
+                                s_btn = page.locator("div[role='dialog'] div[role='button']:has-text('Share'), div[role='button']:has-text('Share')").first
                                 if s_btn.is_visible(timeout=500):
                                     logger.info("Re-triggering Instagram Share button click...")
                                     s_btn.click()
@@ -768,7 +811,17 @@ class PlaywrightPublisher:
 
                     time_sleep(2500)
 
-                # Keep browser running visibly for 15-20 seconds after completion
+                # If Instagram did NOT confirm success
+                if not upload_confirmed:
+                    context.close()
+                    fail_reason = upload_error_msg or f"Instagram upload was not confirmed within {max_wait_seconds}s. Please check your Instagram account."
+                    logger.error(f"Instagram upload failed: {fail_reason}")
+                    return {
+                        "success": False,
+                        "error": fail_reason
+                    }
+
+                # Keep browser running visibly for 15-20 seconds after confirmed completion
                 logger.info("Keeping Instagram browser window open for 15s so user can verify upload completion...")
                 time_sleep(15000)
 

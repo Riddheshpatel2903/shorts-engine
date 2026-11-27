@@ -126,12 +126,12 @@ def render_publish_status_banner():
             if yt.get("success"):
                 st.success(f"🚀 Published to YouTube Shorts: [{yt.get('url')}]({yt.get('url')})")
             elif yt.get("error"):
-                st.info(f"YouTube Upload Note: {yt.get('error')}")
+                st.error(f"❌ YouTube Upload Error: {yt.get('error')}")
         if ig and isinstance(ig, dict):
             if ig.get("success"):
                 st.success(f"🚀 Published to Instagram Reels: [{ig.get('url')}]({ig.get('url')})")
             elif ig.get("error"):
-                st.info(f"Instagram Upload Note: {ig.get('error')}")
+                st.error(f"❌ Instagram Upload Error: {ig.get('error')}")
 
 # Modern Professional SaaS CSS (Stitch Velocity White & Royal Blue Theme)
 st.markdown("""
@@ -1503,8 +1503,30 @@ elif st.session_state.nav_tab in ["⚡ Auto-Catch Viral Reels", "Auto-Catch Vira
         content_info = c_res.get("content", {})
         up_info = c_res.get("upload_results", {})
 
+        # Dynamically determine publication status badge
+        pub_badge_text = "Curated & Ready"
+        pub_badge_class = "badge-blue"
+        if up_info:
+            yt_ok = bool(up_info.get("youtube", {}).get("success", False))
+            ig_ok = bool(up_info.get("instagram", {}).get("success", False))
+            yt_err = bool(up_info.get("youtube", {}).get("error"))
+            ig_err = bool(up_info.get("instagram", {}).get("error"))
+
+            if yt_ok and ig_ok:
+                pub_badge_text = "Published to YouTube & Instagram"
+                pub_badge_class = "badge-green"
+            elif yt_ok:
+                pub_badge_text = "Published to YouTube Shorts"
+                pub_badge_class = "badge-green"
+            elif ig_ok:
+                pub_badge_text = "Published to Instagram Reels"
+                pub_badge_class = "badge-green"
+            elif yt_err or ig_err:
+                pub_badge_text = "Upload Incomplete / Failed"
+                pub_badge_class = "badge-red"
+
         st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
-        st.markdown("<div class='pro-card-header'><span>🎉 Curated Viral Reel & Social Copy</span><span class='pro-badge badge-green'>Ready / Published</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='pro-card-header'><span>🎉 Curated Viral Reel & Social Copy</span><span class='pro-badge {pub_badge_class}'>{pub_badge_text}</span></div>", unsafe_allow_html=True)
 
         col_c_vid, col_c_meta = st.columns([1, 1.2])
         with col_c_vid:
@@ -1534,12 +1556,12 @@ elif st.session_state.nav_tab in ["⚡ Auto-Catch Viral Reels", "Auto-Catch Vira
                     if yt_res.get("success"):
                         st.success(f"✅ Published to YouTube Shorts: [{yt_res.get('url')}]({yt_res.get('url')})")
                     else:
-                        st.info(f"YouTube Upload Note: {yt_res.get('error')}")
+                        st.error(f"❌ YouTube Upload Note: {yt_res.get('error')}")
                 if ig_res:
                     if ig_res.get("success"):
                         st.success(f"✅ Published to Instagram Reels: [{ig_res.get('url')}]({ig_res.get('url')})")
                     else:
-                        st.info(f"Instagram Upload Note: {ig_res.get('error')}")
+                        st.error(f"❌ Instagram Upload Note: {ig_res.get('error')}")
 
             c_cur_post_yt, c_cur_post_ig = st.columns(2)
             with c_cur_post_yt:
@@ -1553,6 +1575,10 @@ elif st.session_state.nav_tab in ["⚡ Auto-Catch Viral Reels", "Auto-Catch Vira
                         )
                         if y_res.get("success"):
                             st.success(f"Published to YouTube Shorts: {y_res.get('url')}")
+                            if "upload_results" not in c_res or not isinstance(c_res["upload_results"], dict):
+                                c_res["upload_results"] = {}
+                            c_res["upload_results"]["youtube"] = y_res
+                            st.rerun()
                         else:
                             st.error(f"YouTube Error: {y_res.get('error')}")
             with c_cur_post_ig:
@@ -1565,6 +1591,10 @@ elif st.session_state.nav_tab in ["⚡ Auto-Catch Viral Reels", "Auto-Catch Vira
                         )
                         if i_res.get("success"):
                             st.success(f"Published to Instagram Reels: {i_res.get('url')}")
+                            if "upload_results" not in c_res or not isinstance(c_res["upload_results"], dict):
+                                c_res["upload_results"] = {}
+                            c_res["upload_results"]["instagram"] = i_res
+                            st.rerun()
                         else:
                             st.error(f"Instagram Error: {i_res.get('error')}")
 
