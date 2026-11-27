@@ -395,6 +395,39 @@ with st.sidebar:
 
 
 # =======================================================
+# TOP HEADER & SECTION NAVIGATION BAR
+# =======================================================
+with st.container():
+    st.markdown("<div class='pro-card' style='padding: 12px 18px; margin-bottom: 16px;'>", unsafe_allow_html=True)
+    c_brand, c_tabs = st.columns([1, 2.5])
+    with c_brand:
+        st.markdown("<div style='font-size: 1.25rem; font-weight: 800; color: #0f172a; padding-top: 4px;'>⚡ ViralShorts <span style='color: #2563eb;'>Studio</span></div>", unsafe_allow_html=True)
+    with c_tabs:
+        tc1, tc2, tc3, tc4 = st.columns(4)
+        with tc1:
+            if st.button("🎬 Viral Shorts", key="top_nav_shorts", use_container_width=True, type="primary" if "Shorts" in st.session_state.nav_tab else "secondary"):
+                st.session_state.main_nav_radio = "🎬 Viral Shorts Studio"
+                st.session_state.nav_tab = "🎬 Viral Shorts Studio"
+                st.rerun()
+        with tc2:
+            if st.button("⚡ Catch Reels", key="top_nav_reels", use_container_width=True, type="primary" if "Auto-Catch" in st.session_state.nav_tab else "secondary"):
+                st.session_state.main_nav_radio = "⚡ Auto-Catch Viral Reels"
+                st.session_state.nav_tab = "⚡ Auto-Catch Viral Reels"
+                st.rerun()
+        with tc3:
+            if st.button("🎞️ Long Videos", key="top_nav_long", use_container_width=True, type="primary" if "Long Video" in st.session_state.nav_tab else "secondary"):
+                st.session_state.main_nav_radio = "🎞️ Long Video Generator"
+                st.session_state.nav_tab = "🎞️ Long Video Generator"
+                st.rerun()
+        with tc4:
+            if st.button("📅 Calendar & Library", key="top_nav_calendar", use_container_width=True, type="primary" if any(k in st.session_state.nav_tab for k in ["Calendar", "Library", "Publishing"]) else "secondary"):
+                st.session_state.main_nav_radio = "📅 Publishing Calendar & Library"
+                st.session_state.nav_tab = "📅 Publishing Calendar & Library"
+                st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# =======================================================
 # SECTION 1: 🎬 VIRAL SHORTS STUDIO
 # =======================================================
 if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
@@ -1923,24 +1956,6 @@ elif (
                             f"</div>",
                             unsafe_allow_html=True
                         )
-
-                        # Small action popover / expander
-                        with st.expander(f"⚙️ {slot_time}", expanded=False):
-                            st.caption(f"**Title:** {slot_entry.get('title')}")
-                            st.caption(f"**Caption:** {slot_entry.get('caption', '')[:100]}...")
-                            if st.button("🚀 Post Now", key=f"btn_cal_post_{slot_key}", use_container_width=True):
-                                with st.spinner("Publishing scheduled video via live browser..."):
-                                    res = scheduler.publish_slot_now(slot_key)
-                                    if res.get("success"):
-                                        st.success("Successfully published to connected accounts!")
-                                    else:
-                                        st.error("Publish note: Check social accounts status.")
-                                    st.rerun()
-
-                            if st.button("❌ Unschedule", key=f"btn_cal_unsched_{slot_key}", type="secondary", use_container_width=True):
-                                scheduler.unschedule_slot(day_str, slot_time)
-                                st.toast(f"Unscheduled {slot_time} on {day_str}", icon="🗑️")
-                                st.rerun()
                     else:
                         st.markdown(
                             f"<div style='background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 6px 2px; margin-bottom: 6px; text-align: center; color: #94a3b8; font-size: 0.68rem;'>"
@@ -1948,6 +1963,35 @@ elif (
                             f"</div>",
                             unsafe_allow_html=True
                         )
+
+        # Scheduled Slots Quick Action & Publishing Bar
+        active_week_slots = [
+            (k, v) for k, v in schedule_data.items()
+            if any(day_obj.strftime("%Y-%m-%d") in k for day_obj in week_days)
+        ]
+        if active_week_slots:
+            with st.expander(f"📋 Scheduled Slots This Week ({len(active_week_slots)} Active)", expanded=True):
+                for slot_key, slot_entry in active_week_slots:
+                    c_sl_info, c_sl_acts = st.columns([2, 1.2])
+                    with c_sl_info:
+                        st.markdown(f"**{slot_entry.get('date')} • {slot_entry.get('time_slot')}** — {slot_entry.get('title')}")
+                        st.caption(f"📝 *{slot_entry.get('caption', '')[:120]}...*")
+                    with c_sl_acts:
+                        c_p_now, c_u_now = st.columns(2)
+                        with c_p_now:
+                            if st.button("🚀 Post Now", key=f"mgr_post_{slot_key}", use_container_width=True):
+                                with st.spinner("Publishing scheduled video..."):
+                                    res = scheduler.publish_slot_now(slot_key)
+                                    if res.get("success"):
+                                        st.success("Published successfully!")
+                                    else:
+                                        st.error(f"Publish note: {res.get('error', 'Check account login')}")
+                                    st.rerun()
+                        with c_u_now:
+                            if st.button("❌ Remove", key=f"mgr_rm_{slot_key}", type="secondary", use_container_width=True):
+                                scheduler.unschedule_slot(slot_entry.get("date"), slot_entry.get("time_slot"))
+                                st.toast("Unscheduled slot", icon="🗑️")
+                                st.rerun()
 
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -2109,3 +2153,5 @@ elif (
                 res = workspace_cleaner.clean_all_downloads(preserve_test_sample=True)
                 st.success(f"Purged {res['deleted_count']} bulky downloads. Freed {res['freed_gb']:.2f} GB of disk space!")
                 st.rerun()
+else:
+    st.info("Select a studio section from the top navigation bar or the sidebar to begin.")

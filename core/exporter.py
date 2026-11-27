@@ -317,34 +317,23 @@ class VideoExporter:
             except Exception:
                 pass
 
-        # Fallback: transcribe the short directly to extract spoken speech
+        # Fast non-blocking fallback (prevents UI freeze/hangs)
+        clean_title = v_p.stem.replace("_", " ").replace("-", " ").title()
+        payload = {
+            "filename": v_p.name,
+            "filepath": str(v_p),
+            "title": f"{clean_title} #Shorts",
+            "caption": f"{clean_title}\n\nDrop your thoughts below! 👇",
+            "instagram_caption": f"{clean_title}\n\nDrop your thoughts below! 👇",
+            "hashtags": "#shorts #viral #trending #reels",
+            "viral_score": 95
+        }
         try:
-            from core.transcriber import AudioTranscriber
-            from core.ai_brain import ai_brain
-            t_res = AudioTranscriber().transcribe(str(v_p))
-            transcript_txt = t_res.get("full_transcript", "").strip()
-            if transcript_txt:
-                meta = ai_brain.generate_viral_metadata(clip_text=transcript_txt, niche="VIRAL", title_hint=v_p.stem)
-                payload = {
-                    "filename": v_p.name,
-                    "filepath": str(v_p),
-                    "title": meta.get("title", f"{v_p.stem} #Shorts"),
-                    "caption": meta.get("instagram_caption", ""),
-                    "instagram_caption": meta.get("instagram_caption", ""),
-                    "hashtags": meta.get("hashtags", "#shorts #viral #reels")
-                }
-                try:
-                    with open(meta_file, "w", encoding="utf-8") as f:
-                        json.dump(payload, f, indent=2, ensure_ascii=False)
-                except Exception:
-                    pass
-                return payload
+            with open(meta_file, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False)
         except Exception:
             pass
-
-        # Final fallback
-        from core.ai_brain import ai_brain
-        return ai_brain.generate_viral_metadata(clip_text=v_p.stem, niche="VIRAL", title_hint=v_p.stem)
+        return payload
 
     # Convenient alias for render_clip
     export_short = render_clip
