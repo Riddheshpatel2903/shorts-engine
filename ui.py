@@ -281,12 +281,17 @@ with st.sidebar:
         st.divider()
 
         # Auto-publish toggle
-        auto_post_toggle = st.checkbox("⚡ Auto-publish Shorts upon render", value=social_status.get("auto_publish", False), key="chk_autopub")
+        auto_post_toggle = st.checkbox("⚡ Auto-publish Shorts upon render (YouTube & Instagram)", value=social_status.get("auto_publish", True), key="chk_autopub")
         if auto_post_toggle != social_status.get("auto_publish"):
             publisher.update_settings(auto_publish_on_render=auto_post_toggle)
             st.rerun()
 
         if st.button("🔄 Refresh Login Status", use_container_width=True, key="btn_refresh_status"):
+            st.rerun()
+
+        if st.button("🧹 Unlock Profiles (Fix Session Errors)", use_container_width=True, key="btn_unlock_profiles"):
+            publisher.unlock_profiles()
+            st.success("Browser profile locks cleared and zombie sessions closed!")
             st.rerun()
 
     # Quick Storage Monitor in Sidebar
@@ -353,6 +358,29 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
             key="shorts_workflow_mode",
             help="1-Click Mode automatically generates all 15 shorts directly into your library ready to post. Manual Review opens the trim handle editor."
         )
+
+        # Autoposting control & platform status banner
+        col_pub_opt1, col_pub_opt2 = st.columns([1.2, 0.8])
+        with col_pub_opt1:
+            auto_publish_active = st.checkbox(
+                "🚀 Auto-Post to YouTube Shorts & Instagram Reels upon render",
+                value=social_status.get("auto_publish", True),
+                key="chk_autopub_main",
+                help="Automatically publishes generated viral shorts directly to your connected YouTube Shorts & Instagram Reels accounts."
+            )
+            if auto_publish_active != social_status.get("auto_publish"):
+                publisher.update_settings(auto_publish_on_render=auto_publish_active)
+        with col_pub_opt2:
+            yt_on = social_status.get("youtube_connected", False)
+            ig_on = social_status.get("instagram_connected", False)
+            if yt_on and ig_on:
+                st.success("🟢 Ready: YouTube & Instagram Connected")
+            elif yt_on:
+                st.info("🟢 Ready: YouTube Connected (IG not connected)")
+            elif ig_on:
+                st.info("🟢 Ready: Instagram Connected (YT not connected)")
+            else:
+                st.warning("⚪ Note: Sign in via sidebar to enable live posting")
 
         c_in_type1, c_in_type2 = st.tabs(["Online Video Link (YouTube / Twitch / Kick / Reels)", "Upload Local Video / Direct File Path"])
 
@@ -588,6 +616,28 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                     )
 
                     if batch_rendered:
+                        # Auto-publish to YouTube Shorts and Instagram Reels if enabled
+                        is_autopub_on = publisher.creds.get("auto_publish_on_render", True)
+                        status_social = publisher.check_status()
+                        has_connected = status_social.get("youtube_connected") or status_social.get("instagram_connected")
+
+                        if is_autopub_on and has_connected:
+                            status_box.write("🚀 **Auto-Publishing generated shorts to YouTube Shorts & Instagram Reels...**")
+                            # Auto-publish top shorts from the batch (up to top 3 automatically to stay safe from platform burst rate limits)
+                            top_publish_count = min(3, len(batch_rendered))
+                            for p_idx, p_item in enumerate(batch_rendered[:top_publish_count]):
+                                status_box.write(f"📲 Publishing Short #{p_idx+1} ('{p_item.get('title', '')[:35]}...') to connected accounts...")
+                                pub_res = publisher.auto_publish_if_enabled(
+                                    video_path=p_item["filepath"],
+                                    social_copy={
+                                        "title": p_item.get("title", ""),
+                                        "caption": p_item.get("caption", ""),
+                                        "instagram_caption": p_item.get("caption", ""),
+                                        "hashtags": p_item.get("hashtags", "")
+                                    }
+                                )
+                                p_item["publish_status"] = pub_res
+
                         status_box.update(label=f"🎉 Successfully Auto-Generated {len(batch_rendered)} Viral Shorts!", state="complete", expanded=False)
                         st.session_state.batch_generation_results = {
                             "source_title": source_url_target.get("title", "Video"),
@@ -641,14 +691,28 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
         )
         st.success(f"Successfully auto-generated **{len(res_list)} Viral Shorts** from `{src_name[:65]}` without any manual approvals!")
 
-        c_gal_btn1, c_gal_btn2 = st.columns([1.2, 0.8])
+        c_gal_btn1, c_gal_btn2, c_gal_btn3 = st.columns([1, 1, 1])
         with c_gal_btn1:
             if st.button("🔄 Generate Another Video / Batch", use_container_width=True, key="btn_reset_batch_gallery"):
                 st.session_state.batch_generation_results = None
                 st.session_state.analysis_result = None
                 st.rerun()
         with c_gal_btn2:
-            st.caption(f"📁 Deliverables stored in `workspace/output/` and `workspace/library/`.")
+            if st.button("🚀 Auto-Post All Shorts Now", use_container_width=True, key="btn_batch_autopost_all"):
+                with st.spinner("Publishing batch shorts to YouTube Shorts & Instagram Reels..."):
+                    for g_idx, g_item in enumerate(res_list):
+                        c_title = st.session_state.get(f"title_inp_{g_idx}", g_item.get("title", ""))
+                        c_tags = st.session_state.get(f"hash_inp_{g_idx}", g_item.get("hashtags", ""))
+                        c_cap = st.session_state.get(f"cap_inp_{g_idx}", g_item.get("caption", ""))
+                        p_res = publisher.auto_publish_if_enabled(
+                            video_path=g_item["filepath"],
+                            social_copy={"title": c_title, "caption": c_cap, "instagram_caption": c_cap, "hashtags": c_tags}
+                        )
+                        g_item["publish_status"] = p_res
+                    st.success("Batch publish completed for connected channels!")
+                    st.rerun()
+        with c_gal_btn3:
+            st.caption("📁 Deliverables stored in `workspace/output/` and `workspace/library/`.")
 
         grid_cols = st.columns(3)
         for g_idx, g_item in enumerate(res_list):
@@ -667,6 +731,63 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                             use_container_width=True
                         )
                 st.caption(f"⭐ **Score:** `{g_item.get('viral_score', 90):.0f}%` | ⏱️ `{g_item.get('duration', 30):.1f}s` | 🎯 `{g_item.get('start', 0):.1f}s - {g_item.get('end', 0):.1f}s`")
+
+                # Show Publish Status if available
+                p_status = g_item.get("publish_status")
+                if p_status and isinstance(p_status, dict):
+                    yt_stat = p_status.get("youtube")
+                    ig_stat = p_status.get("instagram")
+                    if yt_stat and yt_stat.get("success"):
+                        st.markdown(f"✅ **YouTube:** [Shorts Link]({yt_stat.get('url', '#')})")
+                    elif yt_stat and yt_stat.get("error"):
+                        st.caption(f"⚠️ YouTube: {yt_stat.get('error')[:60]}")
+                    if ig_stat and ig_stat.get("success"):
+                        st.markdown(f"✅ **Instagram:** [Reels Shared]({ig_stat.get('url', '#')})")
+                    elif ig_stat and ig_stat.get("error"):
+                        st.caption(f"⚠️ Instagram: {ig_stat.get('error')[:60]}")
+
+                # 1-Click Publishing Buttons for this Short
+                c_pub_yt, c_pub_ig = st.columns(2)
+                with c_pub_yt:
+                    if st.button("🚀 Post YouTube", key=f"btn_pub_yt_batch_{g_idx}", use_container_width=True):
+                        with st.spinner(f"Publishing Short #{g_idx+1} to YouTube Shorts..."):
+                            cur_t = st.session_state.get(f"title_inp_{g_idx}", g_item.get("title", ""))
+                            cur_h = st.session_state.get(f"hash_inp_{g_idx}", g_item.get("hashtags", ""))
+                            cur_c = st.session_state.get(f"cap_inp_{g_idx}", g_item.get("caption", ""))
+                            y_res = publisher.publish_to_youtube(
+                                video_path=g_item["filepath"],
+                                title=cur_t,
+                                description=cur_c,
+                                tags=cur_h
+                            )
+                            if "publish_status" not in g_item or not isinstance(g_item["publish_status"], dict):
+                                g_item["publish_status"] = {}
+                            g_item["publish_status"]["youtube"] = y_res
+                            if y_res.get("success"):
+                                st.toast(f"Short #{g_idx+1} published to YouTube Shorts!", icon="🚀")
+                            else:
+                                st.error(f"YouTube Error: {y_res.get('error')}")
+                            st.rerun()
+
+                with c_pub_ig:
+                    if st.button("🚀 Post Instagram", key=f"btn_pub_ig_batch_{g_idx}", use_container_width=True):
+                        with st.spinner(f"Publishing Short #{g_idx+1} to Instagram Reels..."):
+                            cur_h = st.session_state.get(f"hash_inp_{g_idx}", g_item.get("hashtags", ""))
+                            cur_c = st.session_state.get(f"cap_inp_{g_idx}", g_item.get("caption", ""))
+                            full_cap = f"{cur_c}\n\n{cur_h}".strip()
+                            i_res = publisher.publish_to_instagram(
+                                video_url_or_path=g_item["filepath"],
+                                caption=full_cap
+                            )
+                            if "publish_status" not in g_item or not isinstance(g_item["publish_status"], dict):
+                                g_item["publish_status"] = {}
+                            g_item["publish_status"]["instagram"] = i_res
+                            if i_res.get("success"):
+                                st.toast(f"Short #{g_idx+1} shared to Instagram Reels!", icon="🚀")
+                            else:
+                                st.error(f"Instagram Error: {i_res.get('error')}")
+                            st.rerun()
+
                 with st.expander("📋 Social Copy (Title, Hashtags & Caption)", expanded=False):
                     st.text_input("Title:", value=g_item.get("title", ""), key=f"title_inp_{g_idx}")
                     st.text_input("Hashtags:", value=g_item.get("hashtags", ""), key=f"hash_inp_{g_idx}")

@@ -41,6 +41,13 @@ def launch_login(platform: str):
     profile_dir = PROFILES_DIR / platform
     profile_dir.mkdir(parents=True, exist_ok=True)
 
+    # Release any lingering process locks on this profile before starting
+    try:
+        from core.cleanup_profiles import release_profile_lock
+        release_profile_lock(platform, PROFILES_DIR)
+    except Exception:
+        pass
+
     target_url = "https://studio.youtube.com/" if platform == "youtube" else "https://www.instagram.com/"
     channel = get_installed_browser_channel()
 
@@ -121,15 +128,27 @@ def launch_login(platform: str):
                     login_detected = True
                     print("\n" + "*" * 60)
                     print("  🎉 INSTAGRAM LOGIN CONFIRMED! Session cookies captured.")
-                    print("  You can now close the browser window or return to the Studio.")
+                    print("  Auto-closing in 3 seconds to save session and free profile lock...")
                     print("*" * 60 + "\n")
+                    time.sleep(3)
+                    try:
+                        context.close()
+                    except Exception:
+                        pass
+                    break
 
                 elif platform == "youtube" and ("LOGIN_INFO" in cookie_names or "SAPISID" in cookie_names) and not login_detected:
                     login_detected = True
                     print("\n" + "*" * 60)
                     print("  🎉 YOUTUBE STUDIO LOGIN CONFIRMED! Session cookies captured.")
-                    print("  You can now close the browser window or return to the Studio.")
+                    print("  Auto-closing in 3 seconds to save session and free profile lock...")
                     print("*" * 60 + "\n")
+                    time.sleep(3)
+                    try:
+                        context.close()
+                    except Exception:
+                        pass
+                    break
 
         except Exception:
             pass

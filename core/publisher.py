@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 
 from config import WORKSPACE_DIR
+from core.cleanup_profiles import release_profile_lock, release_all_locks
 
 logger = logging.getLogger("ViralShortsEngine.Publisher")
 
@@ -78,7 +79,7 @@ class PlaywrightPublisher:
     def _default_settings(self) -> Dict[str, Any]:
         return {
             "youtube_privacy": "public",  # public, unlisted, private
-            "auto_publish_on_render": False
+            "auto_publish_on_render": True
         }
 
     def _save_settings(self):
@@ -105,40 +106,93 @@ class PlaywrightPublisher:
             "youtube_connected": yt_ready,
             "youtube_privacy": self.settings.get("youtube_privacy", "public"),
             "instagram_connected": ig_ready,
-            "auto_publish": self.settings.get("auto_publish_on_render", False)
+            "auto_publish": self.settings.get("auto_publish_on_render", True)
         }
 
     # Alias for compatibility
     get_status = check_status
 
+    def unlock_profiles(self):
+        """Releases any lingering profile locks and kills zombie browser sessions."""
+        release_all_locks()
+
     @property
     def creds(self) -> Dict[str, Any]:
         return {
-            "auto_publish_on_render": self.settings.get("auto_publish_on_render", False),
+            "auto_publish_on_render": self.settings.get("auto_publish_on_render", True),
             "youtube": {"privacy": self.settings.get("youtube_privacy", "public")},
             "instagram": {}
         }
 
     def auto_publish_if_enabled(self, video_path: str, social_copy: Dict[str, Any]) -> Dict[str, Any]:
         """Uploads automatically if auto_publish_on_render is enabled and profiles are active."""
-        if not self.settings.get("auto_publish_on_render"):
+        if not self.settings.get("auto_publish_on_render", True):
             return {"status": "skipped", "message": "Auto-publish disabled."}
 
         results = {}
         status = self.check_status()
+        yt_done = False
+        ig_done = False
+
+        caption_text = social_copy.get("instagram_caption") or social_copy.get("caption", "")
+        hashtags_text = social_copy.get("hashtags", "")
+
         if status.get("youtube_connected"):
-            results["youtube"] = self.publish_to_youtube(
-                video_path=video_path,
-                title=social_copy.get("title", "Viral Short #shorts"),
-                description=social_copy.get("instagram_caption", ""),
-                tags=social_copy.get("hashtags", "")
-            )
+            try:
+                results["youtube"] = self.publish_to_youtube(
+                    video_path=video_path,
+                    title=social_copy.get("title", "Viral Short #shorts"),
+                    description=caption_text,
+                    tags=hashtags_text
+                )
+                yt_done = True
+            except Exception as e:
+                results["youtube"] = {"success": False, "error": str(e)}
+
         if status.get("instagram_connected"):
-            results["instagram"] = self.publish_to_instagram(
-                video_url_or_path=video_path,
-                caption=f"{social_copy.get('instagram_caption', '')}\n\n{social_copy.get('hashtags', '')}"
-            )
+            try:
+                ig_full_cap = f"{caption_text}\n\n{hashtags_text}".strip()
+                results["instagram"] = self.publish_to_instagram(
+                    video_url_or_path=video_path,
+                    caption=ig_full_cap
+                )
+                ig_done = True
+            except Exception as e:
+                results["instagram"] = {"success": False, "error": str(e)}
+
+        if not status.get("youtube_connected") and not status.get("instagram_connected"):
+            return {
+                "status": "not_logged_in",
+                "message": "Auto-publish is enabled, but neither YouTube nor Instagram account is connected. Log in via sidebar to auto-publish."
+            }
+
         return results
+
+    def publish_short(
+        self,
+        video_path: str,
+        platform: str,
+        title: str = "",
+        caption: str = "",
+        tags: str = ""
+    ) -> Dict[str, Any]:
+        """Convenience method to publish to a specific platform."""
+        platform = platform.lower().strip()
+        if platform in ["youtube", "yt"]:
+            return self.publish_to_youtube(
+                video_path=video_path,
+                title=title or "Viral Short #shorts",
+                description=caption,
+                tags=tags
+            )
+        elif platform in ["instagram", "ig", "reels"]:
+            full_cap = f"{caption}\n\n{tags}".strip() if tags else caption
+            return self.publish_to_instagram(
+                video_url_or_path=video_path,
+                caption=full_cap
+            )
+        else:
+            return {"success": False, "error": f"Unknown platform: {platform}"}
 
     def open_login_browser(self, platform: str) -> Dict[str, Any]:
         """Spawns a visible browser window so user can sign in on their screen."""
@@ -189,13 +243,21 @@ class PlaywrightPublisher:
 
         full_desc = f"{description.strip()}\n\n{tags.strip()}\n\n#shorts #viral #gaming".strip()
 
+        # Ensure profile locks from lingering sessions are released cleanly
+        try:
+            release_profile_lock("youtube", self.profiles_dir)
+            import time
+            time.sleep(0.5)
+        except Exception as e:
+            logger.debug(f"Profile lock release note: {e}")
+
         logger.info(f"Starting automated YouTube upload for: {vid_file.name}")
 
         try:
             channel = get_installed_browser_channel()
             launch_kwargs = {
                 "user_data_dir": str(profile_dir),
-                "headless": True,
+                "headless": False,  # Visible browser avoids Google bot blocks and headless crash
                 "viewport": {"width": 1280, "height": 800},
                 "ignore_default_args": ["--enable-automation"],
                 "args": [
@@ -328,6 +390,14 @@ class PlaywrightPublisher:
                 "success": False,
                 "error": "Instagram account not logged in. Click 'Open Instagram Login Window' first."
             }
+
+        # Ensure profile locks from lingering sessions are released cleanly
+        try:
+            release_profile_lock("instagram", self.profiles_dir)
+            import time
+            time.sleep(0.5)
+        except Exception as e:
+            logger.debug(f"Profile lock release note: {e}")
 
         logger.info(f"Starting automated Instagram Reel upload for: {vid_file.name}")
 
