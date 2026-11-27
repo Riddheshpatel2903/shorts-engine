@@ -298,33 +298,33 @@ with st.sidebar:
     st.markdown("### ViralShorts Pro")
     st.caption("AI-Powered Video Studio")
 
-    # Mapping to handle navigation state gracefully
-    current_tab = st.session_state.get("nav_tab", "")
-    if current_tab in ["Clip Studio", "🎬 Viral Shorts Studio"]:
-        nav_index = 0
-    elif current_tab in ["⚡ Auto-Catch Viral Reels", "Auto-Catch Viral Reels"]:
-        nav_index = 1
-    elif current_tab in ["Long Video Generator", "🎞️ Long Video Generator"]:
-        nav_index = 2
-    elif current_tab in ["📅 Publishing Calendar & Library", "📁 Video Library & Storage", "Exports & Video Library", "Daily Feeds & Scripts", "Topic to Video Studio"]:
-        nav_index = 3
-    else:
-        nav_index = 0
-
+    # Robust Streamlit Native Radio Navigation
     nav_options = [
         "🎬 Viral Shorts Studio",
         "⚡ Auto-Catch Viral Reels",
         "🎞️ Long Video Generator",
         "📅 Publishing Calendar & Library"
     ]
-    cur_nav = st.session_state.get("nav_tab", nav_options[0])
-    nav_index = nav_options.index(cur_nav) if cur_nav in nav_options else nav_index
 
-    st.session_state.nav_tab = st.radio(
+    # Initialize widget state if missing
+    if "main_nav_radio" not in st.session_state:
+        init_nav = st.session_state.get("nav_tab", nav_options[0])
+        if any(k in str(init_nav) for k in ["Calendar", "Library", "Publishing"]):
+            init_nav = nav_options[3]
+        elif any(k in str(init_nav) for k in ["Long Video", "🎞️"]):
+            init_nav = nav_options[2]
+        elif any(k in str(init_nav) for k in ["Auto-Catch", "⚡"]):
+            init_nav = nav_options[1]
+        elif init_nav not in nav_options:
+            init_nav = nav_options[0]
+        st.session_state.main_nav_radio = init_nav
+
+    selected_section = st.radio(
         "Studio Sections:",
         options=nav_options,
-        index=nav_index
+        key="main_nav_radio"
     )
+    st.session_state.nav_tab = selected_section
 
     st.markdown(f"**Rendered Library:** `{len(all_rendered_videos)} videos ready`")
     st.divider()
@@ -1819,7 +1819,10 @@ elif st.session_state.nav_tab in ["🎞️ Long Video Generator", "Long Video Ge
 # =======================================================
 # SECTION 3: 📅 CONTENT PUBLISHING CALENDAR & VIDEO LIBRARY
 # =======================================================
-elif st.session_state.nav_tab in ["📅 Publishing Calendar & Library", "📁 Video Library & Storage", "Exports & Video Library"]:
+elif (
+    st.session_state.nav_tab in ["📅 Publishing Calendar & Library", "📁 Video Library & Storage", "Exports & Video Library"]
+    or any(k in str(st.session_state.get("nav_tab", "")) for k in ["Calendar", "Library", "Publishing", "📅", "📁"])
+):
     from datetime import datetime, date, timedelta
     from core.scheduler import scheduler, DAILY_SLOTS
 
