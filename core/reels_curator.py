@@ -197,7 +197,12 @@ class ViralReelsCuratorEngine:
                 progress_callback(f"Downloading vertical 9:16 video: '{orig_title[:45]}...' ({duration:.1f}s)")
 
             # 2. Download the vertical video in highest quality MP4
-            downloaded_path = self.downloader.download_video(clean_url)
+            dl_result = self.downloader.download(clean_url)
+            if isinstance(dl_result, dict):
+                downloaded_path = dl_result.get("filepath")
+            else:
+                downloaded_path = dl_result
+
             if not downloaded_path or not Path(downloaded_path).exists():
                 raise RuntimeError("Downloader returned no valid output file.")
 

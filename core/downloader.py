@@ -409,6 +409,9 @@ class VideoDownloader:
             "is_live": info.get("is_live", False) if info else False
             }
 
+    # Alias for API backwards compatibility
+    download_video = download
+
     def download_live_chat(self, url: str, output_path: Path) -> Optional[Path]:
         """
         Attempts to fetch live chat replay (.live_chat.json) for livestreams and VODs.
