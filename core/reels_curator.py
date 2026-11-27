@@ -336,7 +336,8 @@ class ViralReelsCuratorEngine:
                     video_path=str(v_path),
                     title=social_copy.get("title", v_path.stem),
                     description=social_copy.get("instagram_caption", "") or social_copy.get("caption", ""),
-                    tags=social_copy.get("hashtags", "")
+                    tags=social_copy.get("hashtags", ""),
+                    progress_callback=progress_callback
                 )
                 results["youtube"] = y_res
 
@@ -353,7 +354,8 @@ class ViralReelsCuratorEngine:
                 full_ig_caption = f"{social_copy.get('instagram_caption', '')}\n\n{social_copy.get('hashtags', '')}".strip()
                 i_res = publisher.publish_to_instagram(
                     video_url_or_path=str(v_path),
-                    caption=full_ig_caption
+                    caption=full_ig_caption,
+                    progress_callback=progress_callback
                 )
                 results["instagram"] = i_res
 
