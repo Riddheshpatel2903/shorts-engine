@@ -34,7 +34,7 @@ from core.transcriber import AudioTranscriber
 from core.moment_detector import MomentDetector, classify_video_niche
 from core.clip_selector import ClipSelector
 from core.subtitles import SubtitleGenerator, SUBTITLE_PRESETS
-from core.exporter import VideoExporter
+from core.exporter import VideoExporter, exporter
 from core.ai_brain import ai_brain
 from core.cleaner import workspace_cleaner
 from core.publisher import publisher
@@ -837,6 +837,20 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                     st.session_state.selected_clip_window["end"] = float(selected_mom["end"])
 
                 st.caption(f"💡 **Why selected:** {selected_mom.get('why_viral', 'High acoustic energy surge')}")
+
+                # Live Social Copy for this candidate moment
+                cand_spoken = selected_mom.get("text", "")
+                if cand_spoken:
+                    with st.expander("📋 Social Copy Preview for Selected Candidate Moment", expanded=True):
+                        st.markdown(f"**🎙️ Spoken Words in this Moment:** *\"{cand_spoken[:140]}...\"*")
+                        cand_meta = ai_brain.generate_viral_metadata(
+                            clip_text=cand_spoken,
+                            niche=selected_mom.get("category", "COMEDY"),
+                            title_hint=selected_mom.get("hook_text", "")
+                        )
+                        st.text_input("YouTube Shorts Title:", value=cand_meta.get("title", ""), key=f"preview_title_mom_{selected_mom_idx}")
+                        st.text_area("Instagram Caption:", value=cand_meta.get("instagram_caption", ""), height=70, key=f"preview_cap_mom_{selected_mom_idx}")
+                        st.text_input("Hashtags:", value=cand_meta.get("hashtags", ""), key=f"preview_tags_mom_{selected_mom_idx}")
             else:
                 selected_mom_idx = 0
                 selected_mom = {}
@@ -1165,19 +1179,35 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                         transcript=transcript_data
                     )
 
-                    # Generate social copy
-                    social_copy = ai_brain.generate_viral_metadata(
-                        clip_text=selected_mom.get("text", "") if moments else meta.get("title", ""),
-                        niche="GAMING",
-                        title_hint=meta.get("title", ""),
-                        source_metadata=meta
-                    )
+                    # Generate social copy strictly from the speech within trimmed window
+                    trimmed_words = [w["word"] for w in clip_words] if clip_words else []
+                    exact_clip_text = " ".join(trimmed_words) if trimmed_words else (selected_mom.get("text") or meta.get("title", ""))
+
+                    prev_t = st.session_state.get(f"preview_title_mom_{selected_mom_idx}")
+                    prev_c = st.session_state.get(f"preview_cap_mom_{selected_mom_idx}")
+                    prev_h = st.session_state.get(f"preview_tags_mom_{selected_mom_idx}")
+
+                    if prev_t and prev_c:
+                        social_copy = {
+                            "title": prev_t,
+                            "instagram_caption": prev_c,
+                            "caption": prev_c,
+                            "hashtags": prev_h or "#shorts #viral #reels"
+                        }
+                    else:
+                        social_copy = ai_brain.generate_viral_metadata(
+                            clip_text=exact_clip_text,
+                            niche=selected_mom.get("category", "COMEDY") if moments else "VIRAL",
+                            title_hint=selected_mom.get("hook_text", meta.get("title", "")),
+                            source_metadata=meta
+                        )
 
                     st.session_state.generated_short = {
                         "path": str(out_path),
                         "filename": out_fname,
                         "social_copy": social_copy
                     }
+                    st.session_state._fresh_rendered_short_path = str(out_path)
 
                     # Auto-publish if user enabled it in settings
                     if publisher.creds.get("auto_publish_on_render"):
@@ -1190,31 +1220,39 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
 
     # Step 3: Render Deliverable & Output Display for Viral Shorts
     clip_renders = get_rendered_videos("short_*.mp4") or get_rendered_videos("*.mp4")
-    active_clip_file = None
-    active_clip_meta = None
 
-    if st.session_state.generated_short and Path(st.session_state.generated_short["path"]).exists():
-        active_clip_file = Path(st.session_state.generated_short["path"])
-        active_clip_meta = st.session_state.generated_short.get("social_copy", {})
-    elif clip_renders:
-        active_clip_file = clip_renders[0]
-        active_clip_meta = ai_brain.generate_viral_metadata(clip_text=active_clip_file.stem, niche="GAMING")
+    if clip_renders:
+        clip_path_strs = [str(p) for p in clip_renders]
 
-    render_publish_status_banner()
-    if active_clip_file and active_clip_file.exists():
+        default_sel = str(st.session_state.generated_short["path"]) if (st.session_state.generated_short and Path(st.session_state.generated_short["path"]).exists()) else clip_path_strs[0]
+        if "selected_preview_short_path" not in st.session_state or st.session_state.selected_preview_short_path not in clip_path_strs:
+            st.session_state.selected_preview_short_path = default_sel
+
+        # If a short was freshly generated in Step 2, prioritize it
+        if st.session_state.get("_fresh_rendered_short_path"):
+            st.session_state.selected_preview_short_path = st.session_state.pop("_fresh_rendered_short_path")
+
+        sel_index = clip_path_strs.index(st.session_state.selected_preview_short_path) if st.session_state.selected_preview_short_path in clip_path_strs else 0
+
+        render_publish_status_banner()
         st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
         st.markdown("<div class='pro-card-header'><span>Rendered Short Deliverable & Player</span><span class='pro-badge badge-green'>Ready to Publish</span></div>", unsafe_allow_html=True)
 
         if len(clip_renders) > 1:
-            clip_choice = st.selectbox(
+            chosen_short_str = st.selectbox(
                 "Select Rendered Short to Preview:",
-                options=clip_renders,
-                format_func=lambda p: f"{p.name} ({p.stat().st_size / (1024*1024):.1f} MB)",
+                options=clip_path_strs,
+                index=sel_index,
+                format_func=lambda p_str: f"{Path(p_str).name} ({Path(p_str).stat().st_size / (1024*1024):.1f} MB)",
                 key="shorts_studio_file_selector"
             )
-            if clip_choice != active_clip_file:
-                active_clip_file = clip_choice
-                active_clip_meta = ai_brain.generate_viral_metadata(clip_text=active_clip_file.stem, niche="GAMING")
+            if chosen_short_str != st.session_state.selected_preview_short_path:
+                st.session_state.selected_preview_short_path = chosen_short_str
+                st.rerun()
+
+        active_clip_file = Path(st.session_state.selected_preview_short_path)
+        # Load 100% accurate, content-specific metadata for this specific short
+        active_clip_meta = exporter.get_clip_metadata(active_clip_file)
 
         c_out_vid, c_out_meta = st.columns([1, 1.2])
         with c_out_vid:
@@ -1223,7 +1261,7 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
             st.markdown("**YouTube Shorts Title:**")
             st.code(active_clip_meta.get("title", active_clip_file.stem), language=None)
             st.markdown("**Instagram Reels Caption & Hashtags:**")
-            st.code(f"{active_clip_meta.get('instagram_caption', '')}\n\n{active_clip_meta.get('hashtags', '')}", language=None)
+            st.code(f"{active_clip_meta.get('instagram_caption', '') or active_clip_meta.get('caption', '')}\n\n{active_clip_meta.get('hashtags', '')}", language=None)
 
             col_pub1, col_pub2 = st.columns(2)
             with col_pub1:
@@ -1231,7 +1269,7 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
                     yt_res = publisher.publish_to_youtube(
                         video_path=str(active_clip_file),
                         title=active_clip_meta.get("title", active_clip_file.stem),
-                        description=active_clip_meta.get("instagram_caption", ""),
+                        description=active_clip_meta.get("instagram_caption", "") or active_clip_meta.get("caption", ""),
                         tags=active_clip_meta.get("hashtags", "")
                     )
                     if yt_res.get("success"):
@@ -1241,9 +1279,10 @@ if st.session_state.nav_tab in ["🎬 Viral Shorts Studio", "Clip Studio"]:
 
             with col_pub2:
                 if st.button("🚀 Publish to Instagram Reels Now", key="pub_ig_shorts_now", use_container_width=True):
+                    full_cap_ig = f"{active_clip_meta.get('instagram_caption', '') or active_clip_meta.get('caption', '')}\n\n{active_clip_meta.get('hashtags', '')}".strip()
                     ig_res = publisher.publish_to_instagram(
                         video_url_or_path=str(active_clip_file),
-                        caption=f"{active_clip_meta.get('instagram_caption', '')}\n\n{active_clip_meta.get('hashtags', '')}"
+                        caption=full_cap_ig
                     )
                     if ig_res.get("success"):
                         st.success(f"Published to Instagram Reel: {ig_res.get('url')}")
@@ -1760,15 +1799,15 @@ elif st.session_state.nav_tab in ["📁 Video Library & Storage", "Exports & Vid
                     st.markdown(f"**Size:** `{v_size:.2f} MB`")
                     st.markdown(f"**Path:** `{v_path}`")
 
-                    # Social quick publish
-                    meta_copy = ai_brain.generate_viral_metadata(clip_text=v_path.stem, niche="GAMING")
+                    # Social quick publish with content-accurate metadata
+                    meta_copy = exporter.get_clip_metadata(v_path)
                     c_act_yt, c_act_ig = st.columns(2)
                     with c_act_yt:
                         if st.button("🚀 YouTube", key=f"lib_pub_yt_{v_path.stem}", use_container_width=True):
                             res = publisher.publish_to_youtube(
                                 video_path=str(v_path),
                                 title=meta_copy.get("title", v_path.stem),
-                                description=meta_copy.get("instagram_caption", ""),
+                                description=meta_copy.get("instagram_caption", "") or meta_copy.get("caption", ""),
                                 tags=meta_copy.get("hashtags", "")
                             )
                             if res.get("success"):
@@ -1779,9 +1818,10 @@ elif st.session_state.nav_tab in ["📁 Video Library & Storage", "Exports & Vid
                     with c_act_ig:
                         if not is_long:
                             if st.button("🚀 Instagram", key=f"lib_pub_ig_{v_path.stem}", use_container_width=True):
+                                full_c = f"{meta_copy.get('instagram_caption', '') or meta_copy.get('caption', '')}\n\n{meta_copy.get('hashtags', '')}".strip()
                                 res = publisher.publish_to_instagram(
                                     video_url_or_path=str(v_path),
-                                    caption=f"{meta_copy.get('instagram_caption', '')}\n\n{meta_copy.get('hashtags', '')}"
+                                    caption=full_c
                                 )
                                 if res.get("success"):
                                     st.success(f"Published: {res.get('url')}")

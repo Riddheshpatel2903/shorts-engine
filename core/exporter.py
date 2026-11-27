@@ -249,7 +249,102 @@ class VideoExporter:
             raise RuntimeError(f"Export validation failed for {out_path}: {validation.get('error')}")
 
         logger.info(f"Export verified successfully: {out_path} ({validation['size_mb']} MB)")
+
+        # Save sidecar metadata JSON file so captions are permanently bound to this specific short
+        try:
+            from core.ai_brain import ai_brain
+            social_meta = clip_info.get("social_copy")
+            if not social_meta:
+                spoken_parts = []
+                if transcript and "segments" in transcript:
+                    for s in transcript["segments"]:
+                        s_s = float(s.get("start", 0.0))
+                        s_e = float(s.get("end", 0.0))
+                        if (start_t <= s_s <= start_t + duration) or (start_t <= s_e <= start_t + duration) or (s_s < start_t and s_e > start_t + duration):
+                            if s.get("text"):
+                                spoken_parts.append(s["text"].strip())
+                spoken_text = " ".join(spoken_parts) or clip_info.get("hook_text", out_path.stem)
+                social_meta = ai_brain.generate_viral_metadata(
+                    clip_text=spoken_text,
+                    niche=clip_info.get("category", "COMEDY"),
+                    title_hint=clip_info.get("hook_text", "")
+                )
+
+            meta_payload = {
+                "filename": out_path.name,
+                "filepath": str(out_path),
+                "duration": duration,
+                "start": start_t,
+                "end": start_t + duration,
+                "title": social_meta.get("title", f"{out_path.stem} #Shorts"),
+                "caption": social_meta.get("instagram_caption", ""),
+                "instagram_caption": social_meta.get("instagram_caption", ""),
+                "hashtags": social_meta.get("hashtags", "#shorts #viral #reels")
+            }
+            meta_json_path = out_path.with_suffix(".meta.json")
+            with open(meta_json_path, "w", encoding="utf-8") as f_meta:
+                json.dump(meta_payload, f_meta, indent=2, ensure_ascii=False)
+            logger.info(f"Saved sidecar metadata JSON: {meta_json_path.name}")
+        except Exception as e:
+            logger.debug(f"Could not write sidecar metadata: {e}")
+
         return out_path
+
+    def get_clip_metadata(self, video_path: Any) -> Dict[str, Any]:
+        """
+        Retrieves accurate, content-specific metadata for a rendered short.
+        Reads .meta.json sidecar if available; otherwise dynamically generates
+        relevant metadata by transcribing or reading audio speech.
+        """
+        v_p = Path(video_path)
+        meta_file = v_p.with_suffix(".meta.json")
+        if meta_file.exists():
+            try:
+                with open(meta_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if data.get("title") and (data.get("caption") or data.get("instagram_caption")):
+                        return data
+            except Exception:
+                pass
+
+        alt_meta = v_p.parent / f"{v_p.stem}.meta.json"
+        if alt_meta.exists():
+            try:
+                with open(alt_meta, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if data.get("title") and (data.get("caption") or data.get("instagram_caption")):
+                        return data
+            except Exception:
+                pass
+
+        # Fallback: transcribe the short directly to extract spoken speech
+        try:
+            from core.transcriber import AudioTranscriber
+            from core.ai_brain import ai_brain
+            t_res = AudioTranscriber().transcribe(str(v_p))
+            transcript_txt = t_res.get("full_transcript", "").strip()
+            if transcript_txt:
+                meta = ai_brain.generate_viral_metadata(clip_text=transcript_txt, niche="VIRAL", title_hint=v_p.stem)
+                payload = {
+                    "filename": v_p.name,
+                    "filepath": str(v_p),
+                    "title": meta.get("title", f"{v_p.stem} #Shorts"),
+                    "caption": meta.get("instagram_caption", ""),
+                    "instagram_caption": meta.get("instagram_caption", ""),
+                    "hashtags": meta.get("hashtags", "#shorts #viral #reels")
+                }
+                try:
+                    with open(meta_file, "w", encoding="utf-8") as f:
+                        json.dump(payload, f, indent=2, ensure_ascii=False)
+                except Exception:
+                    pass
+                return payload
+        except Exception:
+            pass
+
+        # Final fallback
+        from core.ai_brain import ai_brain
+        return ai_brain.generate_viral_metadata(clip_text=v_p.stem, niche="VIRAL", title_hint=v_p.stem)
 
     # Convenient alias for render_clip
     export_short = render_clip
@@ -364,6 +459,24 @@ class VideoExporter:
                     title_hint=hook
                 )
 
+                # Save sidecar metadata JSON file directly alongside batch deliverable
+                try:
+                    meta_payload = {
+                        "filename": rendered_path.name,
+                        "filepath": str(rendered_path),
+                        "start": s_t,
+                        "end": e_t,
+                        "duration": dur,
+                        "title": meta.get("title", f"{hook} #Shorts"),
+                        "caption": meta.get("instagram_caption", ""),
+                        "instagram_caption": meta.get("instagram_caption", ""),
+                        "hashtags": meta.get("hashtags", "#shorts #viral #reels")
+                    }
+                    with open(rendered_path.with_suffix(".meta.json"), "w", encoding="utf-8") as f_meta:
+                        json.dump(meta_payload, f_meta, indent=2, ensure_ascii=False)
+                except Exception:
+                    pass
+
                 results.append({
                     "id": idx,
                     "filepath": str(rendered_path),
@@ -405,3 +518,7 @@ class VideoExporter:
                     logger.warning(f"Could not delete temp file {item}: {e}")
 
         logger.info("Workspace cleanup completed.")
+
+
+# Singleton instance
+exporter = VideoExporter()
