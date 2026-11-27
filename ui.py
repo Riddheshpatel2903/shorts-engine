@@ -280,6 +280,12 @@ if "long_yt_meta" not in st.session_state:
 # Calendar & Scheduling State
 if "calendar_week_offset" not in st.session_state:
     st.session_state.calendar_week_offset = 0
+if "calendar_day_offset" not in st.session_state:
+    st.session_state.calendar_day_offset = 0
+if "selected_video_to_drop" not in st.session_state:
+    st.session_state.selected_video_to_drop = None
+if "fragmenter_result" not in st.session_state:
+    st.session_state.fragmenter_result = None
 if "target_schedule_slot" not in st.session_state:
     st.session_state.target_schedule_slot = None
 if "calendar_platform_filter" not in st.session_state:
@@ -302,6 +308,7 @@ with st.sidebar:
     nav_options = [
         "🎬 Viral Shorts Studio",
         "⚡ Auto-Catch Viral Reels",
+        "🧩 Video Series Fragmenter",
         "🎞️ Long Video Generator",
         "📅 Publishing Calendar & Library"
     ]
@@ -310,8 +317,10 @@ with st.sidebar:
     if "main_nav_radio" not in st.session_state:
         init_nav = st.session_state.get("nav_tab", nav_options[0])
         if any(k in str(init_nav) for k in ["Calendar", "Library", "Publishing"]):
-            init_nav = nav_options[3]
+            init_nav = nav_options[4]
         elif any(k in str(init_nav) for k in ["Long Video", "🎞️"]):
+            init_nav = nav_options[3]
+        elif any(k in str(init_nav) for k in ["Fragmenter", "Series", "🧩"]):
             init_nav = nav_options[2]
         elif any(k in str(init_nav) for k in ["Auto-Catch", "⚡"]):
             init_nav = nav_options[1]
@@ -399,11 +408,11 @@ with st.sidebar:
 # =======================================================
 with st.container():
     st.markdown("<div class='pro-card' style='padding: 12px 18px; margin-bottom: 16px;'>", unsafe_allow_html=True)
-    c_brand, c_tabs = st.columns([1, 2.5])
+    c_brand, c_tabs = st.columns([1, 2.7])
     with c_brand:
         st.markdown("<div style='font-size: 1.25rem; font-weight: 800; color: #0f172a; padding-top: 4px;'>⚡ ViralShorts <span style='color: #2563eb;'>Studio</span></div>", unsafe_allow_html=True)
     with c_tabs:
-        tc1, tc2, tc3, tc4 = st.columns(4)
+        tc1, tc2, tc3, tc4, tc5 = st.columns(5)
         with tc1:
             if st.button("🎬 Viral Shorts", key="top_nav_shorts", use_container_width=True, type="primary" if "Shorts" in st.session_state.nav_tab else "secondary"):
                 st.session_state.main_nav_radio = "🎬 Viral Shorts Studio"
@@ -415,12 +424,17 @@ with st.container():
                 st.session_state.nav_tab = "⚡ Auto-Catch Viral Reels"
                 st.rerun()
         with tc3:
+            if st.button("🧩 Fragmenter", key="top_nav_frag", use_container_width=True, type="primary" if any(k in st.session_state.nav_tab for k in ["Fragmenter", "Series", "🧩"]) else "secondary"):
+                st.session_state.main_nav_radio = "🧩 Video Series Fragmenter"
+                st.session_state.nav_tab = "🧩 Video Series Fragmenter"
+                st.rerun()
+        with tc4:
             if st.button("🎞️ Long Videos", key="top_nav_long", use_container_width=True, type="primary" if "Long Video" in st.session_state.nav_tab else "secondary"):
                 st.session_state.main_nav_radio = "🎞️ Long Video Generator"
                 st.session_state.nav_tab = "🎞️ Long Video Generator"
                 st.rerun()
-        with tc4:
-            if st.button("📅 Calendar & Library", key="top_nav_calendar", use_container_width=True, type="primary" if any(k in st.session_state.nav_tab for k in ["Calendar", "Library", "Publishing"]) else "secondary"):
+        with tc5:
+            if st.button("📅 Calendar", key="top_nav_calendar", use_container_width=True, type="primary" if any(k in st.session_state.nav_tab for k in ["Calendar", "Library", "Publishing"]) else "secondary"):
                 st.session_state.main_nav_radio = "📅 Publishing Calendar & Library"
                 st.session_state.nav_tab = "📅 Publishing Calendar & Library"
                 st.rerun()
@@ -1880,6 +1894,226 @@ elif st.session_state.nav_tab in ["🎞️ Long Video Generator", "Long Video Ge
 
 
 # =======================================================
+# SECTION 2.5: 🧩 VIDEO SERIES FRAGMENTER
+# =======================================================
+elif any(k in str(st.session_state.get("nav_tab", "")) for k in ["Fragmenter", "Series", "🧩"]):
+    from datetime import date, timedelta
+    from core.fragmenter import video_fragmenter
+    from core.scheduler import scheduler, DAILY_SLOTS
+
+    st.markdown("## 🧩 Video Series Fragmenter")
+    st.caption("Cleanly fragment any video or stream into continuous 30-40s sequential parts (Part 1, Part 2, ...) with automatic 30-minute interval daytime calendar scheduling. Pure video cuts — zero extra effects, overlays, or filters.")
+
+    today = date.today()
+    three_day_options = [
+        today.strftime("%Y-%m-%d"),
+        (today + timedelta(days=1)).strftime("%Y-%m-%d"),
+        (today + timedelta(days=2)).strftime("%Y-%m-%d")
+    ]
+    three_day_labels = {
+        three_day_options[0]: f"🌟 Today ({today.strftime('%b %d')})",
+        three_day_options[1]: f"☀️ Tomorrow ({(today + timedelta(days=1)).strftime('%b %d')})",
+        three_day_options[2]: f"🚀 Day After Tomorrow ({(today + timedelta(days=2)).strftime('%b %d')})"
+    }
+
+    # Ingestion Form
+    st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='pro-card-header'><span>Series Ingestion & Split Configuration</span><span class='pro-badge badge-blue'>Sequential Cut • Zero Overlays</span></div>", unsafe_allow_html=True)
+
+    c_f_url, c_f_upload = st.columns([1.4, 1.1])
+    with c_f_url:
+        frag_url = st.text_input("🔗 Video or Stream URL (YouTube, TikTok, Instagram, Direct Link):", placeholder="https://www.youtube.com/watch?v=...", key="frag_input_url")
+    with c_f_upload:
+        frag_upload = st.file_uploader("📁 Or Upload Video File (.mp4, .mov, .mkv):", type=["mp4", "mov", "mkv", "avi", "webm"], key="frag_input_file")
+
+    c_f_title, c_f_dur, c_f_crop = st.columns([1.4, 1, 1.1])
+    with c_f_title:
+        frag_title = st.text_input("🏷️ Series Title Prefix (Optional):", placeholder="e.g. Joe Rogan #2150 or Dark Secrets", key="frag_title_prefix")
+    with c_f_dur:
+        frag_duration = st.slider("⏱️ Part Duration (seconds):", min_value=25, max_value=50, value=35, step=5, key="frag_part_duration", help="Target length for each sequential part (typically 30-40s).")
+    with c_f_crop:
+        frag_vertical = st.selectbox(
+            "📐 Frame Aspect Ratio:",
+            options=["📱 9:16 Vertical Shorts/Reels (1080x1920 center-crop)", "🖥️ Keep Original Video Aspect Ratio"],
+            index=0,
+            key="frag_aspect_ratio"
+        )
+        is_vertical = "9:16" in frag_vertical
+
+    st.markdown("<div style='margin-top: 10px; padding: 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px;'>", unsafe_allow_html=True)
+    c_as1, c_as2, c_as3 = st.columns([1.5, 1.2, 1.2])
+    with c_as1:
+        frag_auto_sched = st.checkbox("📅 Auto-Schedule Series Parts Every 30 Minutes", value=True, key="frag_chk_auto_sched", help="Automatically books sequential daytime slots (09:00 AM - 09:00 PM) across Today, Tomorrow, and Day After Tomorrow.")
+    with c_as2:
+        frag_start_day = st.selectbox(
+            "Start Day:",
+            options=three_day_options,
+            format_func=lambda d: three_day_labels.get(d, d),
+            key="frag_sel_start_day",
+            disabled=not frag_auto_sched
+        )
+    with c_as3:
+        frag_start_slot = st.selectbox(
+            "Start Daytime Slot:",
+            options=DAILY_SLOTS,
+            index=0,
+            key="frag_sel_start_slot",
+            disabled=not frag_auto_sched
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.write("")
+    if st.button("⚡ Fragment Video & Auto-Schedule (Every 30 Mins)", type="primary", use_container_width=True, key="btn_run_fragmenter"):
+        # Resolve target source
+        target_src = None
+        if frag_url and frag_url.strip():
+            target_src = frag_url.strip()
+        elif frag_upload is not None:
+            from config import DOWNLOADS_DIR
+            up_path = Path(DOWNLOADS_DIR) / frag_upload.name
+            with open(up_path, "wb") as f:
+                f.write(frag_upload.getbuffer())
+            target_src = str(up_path)
+
+        if not target_src:
+            st.warning("Please provide a video URL or upload a video file to fragment.")
+        else:
+            prog_bar = st.progress(0.0)
+            status_text = st.empty()
+
+            def frag_cb(msg: str, pct: float):
+                prog_bar.progress(min(1.0, max(0.0, pct)))
+                status_text.markdown(f"**{msg}**")
+
+            with st.spinner("Processing video fragmentation..."):
+                res = video_fragmenter.fragment_video(
+                    video_url_or_path=target_src,
+                    part_duration=float(frag_duration),
+                    make_vertical_916=is_vertical,
+                    title_prefix=frag_title.strip() if frag_title.strip() else None,
+                    auto_schedule_30min=frag_auto_sched,
+                    schedule_start_date=frag_start_day,
+                    schedule_start_slot=frag_start_slot,
+                    progress_callback=frag_cb
+                )
+
+            prog_bar.empty()
+            status_text.empty()
+
+            if res.get("success"):
+                st.session_state.fragmenter_result = res
+                st.success(f"🎉 Successfully created {res.get('total_parts')} sequential parts (~{frag_duration}s each) with NO extra effects!")
+                if res.get("scheduled_slots"):
+                    st.toast(f"📅 Auto-scheduled {len(res.get('scheduled_slots'))} parts every 30 minutes in calendar!", icon="📅")
+                st.rerun()
+            else:
+                st.error(f"Fragmentation Error: {res.get('error')}")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Active Fragmenter Results
+    active_frag_res = st.session_state.get("fragmenter_result")
+    if active_frag_res and active_frag_res.get("success"):
+        parts = active_frag_res.get("parts", [])
+        sched_slots = active_frag_res.get("scheduled_slots", [])
+
+        st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='pro-card-header'>"
+            f"<span>🎬 Series Parts Generated: {active_frag_res.get('base_title')}</span>"
+            f"<span class='pro-badge badge-green'>{len(parts)} Parts Ready</span>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+
+        c_m_d, c_m_p, c_m_s = st.columns(3)
+        with c_m_d:
+            st.metric("Total Video Duration", f"{active_frag_res.get('total_duration', 0):.1f}s")
+        with c_m_p:
+            st.metric("Continuous Parts", f"{len(parts)} Parts")
+        with c_m_s:
+            st.metric("Auto-Scheduled Slots", f"{len(sched_slots)} Slots (Every 30m)")
+
+        c_cal_jump, c_clear_jump = st.columns([1.5, 1])
+        with c_cal_jump:
+            if st.button("📅 Open 3-Day Publishing Calendar to View All Slots", key="btn_goto_cal_frag", type="primary", use_container_width=True):
+                st.session_state.main_nav_radio = "📅 Publishing Calendar & Library"
+                st.session_state.nav_tab = "📅 Publishing Calendar & Library"
+                st.rerun()
+        with c_clear_jump:
+            if st.button("🔄 Clear This Session Result", key="btn_clear_frag_res", use_container_width=True):
+                st.session_state.fragmenter_result = None
+                st.rerun()
+
+        st.divider()
+
+        for p_idx, part in enumerate(parts):
+            p_file = Path(part["filepath"])
+            col_pv, col_pm = st.columns([1.1, 1.9])
+            with col_pv:
+                if p_file.exists():
+                    st.video(str(p_file))
+                else:
+                    st.warning("Video file missing.")
+            with col_pm:
+                st.markdown(f"### {part['title']}")
+                st.caption(f"⏱️ Duration: `{part['duration']}s` • 📁 Size: `{part['size_mb']} MB` • 🏷️ Filename: `{part['filename']}`")
+
+                matching_slot = next((s for s in sched_slots if s.get("part") == part["part_index"]), None)
+                if matching_slot:
+                    st.markdown(f"<span class='pro-badge badge-blue'>📅 Scheduled: {matching_slot.get('date')} at {matching_slot.get('time_slot')}</span>", unsafe_allow_html=True)
+
+                with st.expander("📝 Stored Topic Caption & Sequential Hashtags", expanded=False):
+                    st.text_area("Caption:", value=part["caption"], height=70, key=f"frag_cap_{p_idx}", disabled=True)
+                    st.code(part["hashtags"], language=None)
+
+                c_p_yt, c_p_ig, c_p_del = st.columns([1, 1, 1])
+                with c_p_yt:
+                    if st.button("🚀 YouTube", key=f"frag_pub_yt_{p_idx}", use_container_width=True):
+                        with st.spinner("Posting part to YouTube Shorts..."):
+                            y_res = publisher.publish_to_youtube(str(p_file), part["title"], part["caption"], part["hashtags"])
+                            if y_res.get("success"):
+                                st.success("Published to YouTube Shorts!")
+                            else:
+                                st.error(f"YouTube Note: {y_res.get('error')}")
+                with c_p_ig:
+                    if st.button("🚀 Instagram", key=f"frag_pub_ig_{p_idx}", use_container_width=True):
+                        with st.spinner("Posting part to Instagram Reels..."):
+                            full_c = f"{part['caption']}\n\n{part['hashtags']}".strip()
+                            i_res = publisher.publish_to_instagram(str(p_file), full_c)
+                            if i_res.get("success"):
+                                st.success("Published to Instagram Reels!")
+                            else:
+                                st.error(f"Instagram Note: {i_res.get('error')}")
+                with c_p_del:
+                    if st.button("🗑️ Delete", key=f"frag_del_{p_idx}", use_container_width=True):
+                        scheduler.unschedule_by_path(str(p_file))
+                        workspace_cleaner.delete_single_deliverable(str(p_file))
+                        st.toast(f"Deleted Part {part['part_index']}", icon="🗑️")
+                        st.rerun()
+
+            st.markdown("<hr style='margin: 12px 0; border: none; border-top: 1px solid #f1f5f9;'>", unsafe_allow_html=True)
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # Previously Fragmented Series Deliverables from disk
+    from config import OUTPUT_DIR
+    all_output_videos = list(Path(OUTPUT_DIR).glob("*_part_*.mp4"))
+    if all_output_videos:
+        with st.expander(f"📁 Previously Fragmented Series Parts in Library ({len(all_output_videos)} Parts)", expanded=False):
+            f_cols = st.columns(3)
+            for f_idx, f_vid in enumerate(sorted(all_output_videos, key=lambda p: p.stat().st_mtime, reverse=True)):
+                with f_cols[f_idx % 3]:
+                    st.markdown(f"**{f_vid.stem}**")
+                    st.video(str(f_vid))
+                    if st.button("🗑️ Delete", key=f"del_prev_frag_{f_idx}", use_container_width=True):
+                        scheduler.unschedule_by_path(str(f_vid))
+                        workspace_cleaner.delete_single_deliverable(str(f_vid))
+                        st.toast(f"Deleted {f_vid.name}", icon="🗑️")
+                        st.rerun()
+
+
+# =======================================================
 # SECTION 3: 📅 CONTENT PUBLISHING CALENDAR & VIDEO LIBRARY
 # =======================================================
 elif (
@@ -1889,15 +2123,13 @@ elif (
     from datetime import datetime, date, timedelta
     from core.scheduler import scheduler, DAILY_SLOTS
 
-    st.markdown("## 📅 Content Publishing Calendar & Video Library")
-    st.caption("Plan, schedule, and auto-publish YouTube Shorts and Instagram Reels with 100% topic-accurate AI captions stored directly with each video.")
+    st.markdown("## 📅 Content Publishing Calendar & Video Gallery")
+    st.caption("Plan, schedule, and auto-publish YouTube Shorts and Instagram Reels across a 3-day (Today, Tomorrow, Day After Tomorrow) 12-hour daytime window with stored AI captions.")
 
-    # 1. Calendar Time Window & Controls
     today = date.today()
-    week_offset = st.session_state.get("calendar_week_offset", 0)
-    start_of_week = today - timedelta(days=today.weekday()) + timedelta(weeks=week_offset)
-    end_of_week = start_of_week + timedelta(days=6)
-    week_days = [start_of_week + timedelta(days=i) for i in range(7)]
+    day_offset = st.session_state.get("calendar_day_offset", 0)
+    base_date = today + timedelta(days=day_offset)
+    three_days = [base_date + timedelta(days=i) for i in range(3)]
 
     schedule_data = scheduler.get_schedule()
     all_available_shorts = scheduler.list_all_available_shorts()
@@ -1910,67 +2142,96 @@ elif (
     with c_ctrl1:
         c_nav_p, c_nav_t, c_nav_n = st.columns([1, 2, 1])
         with c_nav_p:
-            if st.button("◀ Prev Week", key="cal_prev_week", use_container_width=True):
-                st.session_state.calendar_week_offset = week_offset - 1
+            if st.button("◀ Prev Day", key="cal_prev_day", use_container_width=True):
+                st.session_state.calendar_day_offset = day_offset - 1
                 st.rerun()
         with c_nav_t:
-            st.markdown(f"<div style='text-align: center; font-weight: 700; padding-top: 6px; color: #0f172a; font-size: 0.95rem;'>{start_of_week.strftime('%b %d')} – {end_of_week.strftime('%b %d, %Y')}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center; font-weight: 700; padding-top: 6px; color: #0f172a; font-size: 0.95rem;'>{three_days[0].strftime('%b %d')} – {three_days[2].strftime('%b %d, %Y')}</div>", unsafe_allow_html=True)
         with c_nav_n:
-            if st.button("Next Week ▶", key="cal_next_week", use_container_width=True):
-                st.session_state.calendar_week_offset = week_offset + 1
+            if st.button("Next Day ▶", key="cal_next_day", use_container_width=True):
+                st.session_state.calendar_day_offset = day_offset + 1
                 st.rerun()
 
     with c_ctrl2:
         if st.button("📅 Jump to Today", key="cal_today_jump", use_container_width=True):
-            st.session_state.calendar_week_offset = 0
+            st.session_state.calendar_day_offset = 0
             st.rerun()
 
     with c_ctrl3:
-        if st.button("⚡ Auto-Fill Week (Ready Shorts)", key="cal_autofill_week", type="primary", use_container_width=True):
-            filled = scheduler.auto_fill_week(start_date_str=start_of_week.strftime("%Y-%m-%d"))
+        if st.button("⚡ Auto-Fill 3 Days (Ready Shorts)", key="cal_autofill_3days", type="primary", use_container_width=True):
+            filled = scheduler.auto_fill_3days(start_date_str=base_date.strftime("%Y-%m-%d"))
             if filled > 0:
-                st.toast(f"🎉 Auto-scheduled {filled} viral shorts across upcoming empty slots!", icon="📅")
+                st.toast(f"🎉 Auto-scheduled {filled} viral shorts across empty 12-hour daytime slots!", icon="📅")
             else:
-                st.toast("No empty upcoming slots or no unscheduled shorts available.", icon="ℹ️")
+                st.toast("No empty upcoming daytime slots or no unscheduled shorts available.", icon="ℹ️")
             st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # 2. Main 2-Column Split: Calendar (Left 63%) + Ready Shorts Tray (Right 37%)
-    col_calendar, col_tray = st.columns([1.65, 1.0])
+    # Indicator banner if a video is currently selected for drop
+    selected_to_drop = st.session_state.get("selected_video_to_drop")
+    if selected_to_drop:
+        sel_path = Path(selected_to_drop)
+        st.markdown(
+            f"<div style='background: #eff6ff; border: 2px dashed #2563eb; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;'>"
+            f"<div><span style='font-size: 1.1rem;'>🎯</span> <strong>Selected for Drag/Drop:</strong> <code>{sel_path.name}</code> — <em>Click any empty slot below to place it!</em></div>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+        if st.button("❌ Cancel Drop Selection", key="btn_cancel_drop_sel"):
+            st.session_state.selected_video_to_drop = None
+            st.rerun()
+
+    # 2. Main 2-Column Split: 3-Day 12-Hour Calendar (Left 54%) + Ready Shorts Video Gallery (Right 46%)
+    col_calendar, col_tray = st.columns([1.35, 1.15])
 
     # ==========================================
-    # LEFT COLUMN: 7-DAY INTERACTIVE CALENDAR
+    # LEFT COLUMN: 3-DAY 12-HOUR CALENDAR
     # ==========================================
     with col_calendar:
         st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
-        st.markdown(f"<div class='pro-card-header'><span>Interactive Content Calendar</span><span class='pro-badge badge-blue'>{len(schedule_data)} Total Scheduled</span></div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='pro-card-header'>"
+            f"<span>📅 3-Day Daytime Calendar (09:00 AM – 09:00 PM)</span>"
+            f"<span class='pro-badge badge-blue'>{len(schedule_data)} Total Scheduled</span>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
 
-        # 7 Weekday Columns
-        day_cols = st.columns(7)
-        weekday_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        # 3 Day Columns
+        day_cols = st.columns(3)
+        day_labels = []
+        for d in three_days:
+            if d == today:
+                day_labels.append("🌟 TODAY")
+            elif d == today + timedelta(days=1):
+                day_labels.append("☀️ TOMORROW")
+            elif d == today + timedelta(days=2):
+                day_labels.append("🚀 DAY AFTER")
+            else:
+                day_labels.append(d.strftime("%A").upper())
 
-        for idx, (d_col, day_obj) in enumerate(zip(day_cols, week_days)):
+        for idx, (d_col, day_obj) in enumerate(zip(day_cols, three_days)):
             day_str = day_obj.strftime("%Y-%m-%d")
             is_today = (day_obj == today)
 
             with d_col:
-                header_style = "background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;" if is_today else "background: #f8fafc; color: #475569; border: 1px solid #e2e8f0;"
+                header_style = "background: #eff6ff; color: #2563eb; border: 2px solid #3b82f6;" if is_today else "background: #f8fafc; color: #334155; border: 1px solid #cbd5e1;"
                 st.markdown(
-                    f"<div style='border-radius: 8px; padding: 6px 4px; text-align: center; margin-bottom: 8px; {header_style}'>"
-                    f"<div style='font-size: 0.72rem; text-transform: uppercase; font-weight: 700;'>{weekday_names[idx]}</div>"
-                    f"<div style='font-size: 1rem; font-weight: 800;'>{day_obj.day}</div>"
+                    f"<div style='border-radius: 8px; padding: 8px 4px; text-align: center; margin-bottom: 10px; {header_style}'>"
+                    f"<div style='font-size: 0.78rem; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;'>{day_labels[idx]}</div>"
+                    f"<div style='font-size: 1.1rem; font-weight: 800;'>{day_obj.strftime('%b %d')}</div>"
                     f"</div>",
                     unsafe_allow_html=True
                 )
 
-                # Time slots for each day
+                # 12-Hour Daytime Slots (09:00 AM to 09:00 PM)
                 for slot_time in DAILY_SLOTS:
                     slot_key = scheduler.make_slot_key(day_str, slot_time)
                     slot_entry = schedule_data.get(slot_key)
 
                     if slot_entry:
-                        v_name = slot_entry.get("title", slot_entry.get("video_name", "Short"))[:18]
+                        v_name = slot_entry.get("title", slot_entry.get("video_name", "Short"))[:22]
                         status = slot_entry.get("status", "scheduled")
                         is_pub = (status == "published")
                         badge_color = "#059669" if is_pub else "#2563eb"
@@ -1978,44 +2239,57 @@ elif (
                         slot_border = "#a7f3d0" if is_pub else "#bfdbfe"
 
                         st.markdown(
-                            f"<div style='background: {slot_bg}; border: 1px solid {slot_border}; border-left: 3px solid {badge_color}; border-radius: 6px; padding: 6px 4px; margin-bottom: 6px;'>"
-                            f"<div style='font-size: 0.68rem; font-weight: 700; color: #64748b; display: flex; justify-content: space-between;'>"
-                            f"<span>{slot_time}</span><span>{'✅' if is_pub else '📅'}</span>"
+                            f"<div style='background: {slot_bg}; border: 1px solid {slot_border}; border-left: 3px solid {badge_color}; border-radius: 6px; padding: 6px 6px; margin-bottom: 6px;'>"
+                            f"<div style='font-size: 0.7rem; font-weight: 700; color: #475569; display: flex; justify-content: space-between;'>"
+                            f"<span>⏰ {slot_time}</span><span>{'✅ Published' if is_pub else '📅 Scheduled'}</span>"
                             f"</div>"
-                            f"<div style='font-size: 0.75rem; font-weight: 700; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;' title='{slot_entry.get('title')}'>{v_name}</div>"
+                            f"<div style='font-size: 0.76rem; font-weight: 700; color: #0f172a; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;' title='{slot_entry.get('title')}'>{v_name}</div>"
                             f"</div>",
                             unsafe_allow_html=True
                         )
                     else:
-                        st.markdown(
-                            f"<div style='background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 6px 2px; margin-bottom: 6px; text-align: center; color: #94a3b8; font-size: 0.68rem;'>"
-                            f"{slot_time}"
-                            f"</div>",
-                            unsafe_allow_html=True
-                        )
+                        # Empty Slot Drop Target
+                        if selected_to_drop:
+                            if st.button(f"📥 Drop {slot_time}", key=f"drop_to_{slot_key}", use_container_width=True, help=f"Drop selected short into {day_str} {slot_time}"):
+                                res = scheduler.schedule_short(
+                                    date_str=day_str,
+                                    time_slot=slot_time,
+                                    video_path=selected_to_drop
+                                )
+                                if res.get("success"):
+                                    st.toast(f"🎉 Dropped video into {day_str} at {slot_time}!", icon="📅")
+                                    st.session_state.selected_video_to_drop = None
+                                    st.rerun()
+                        else:
+                            st.markdown(
+                                f"<div style='background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 6px 4px; margin-bottom: 6px; text-align: center; color: #94a3b8; font-size: 0.7rem;'>"
+                                f"{slot_time} • Empty"
+                                f"</div>",
+                                unsafe_allow_html=True
+                            )
 
-        # Scheduled Slots Quick Action & Publishing Bar
-        active_week_slots = [
+        # Active Scheduled Slots List & Instant Action Bar
+        active_3day_slots = [
             (k, v) for k, v in schedule_data.items()
-            if any(day_obj.strftime("%Y-%m-%d") in k for day_obj in week_days)
+            if any(day_obj.strftime("%Y-%m-%d") in k for day_obj in three_days)
         ]
-        if active_week_slots:
-            with st.expander(f"📋 Scheduled Slots This Week ({len(active_week_slots)} Active)", expanded=True):
-                for slot_key, slot_entry in active_week_slots:
+        if active_3day_slots:
+            with st.expander(f"📋 Scheduled Slots in this 3-Day Window ({len(active_3day_slots)} Active)", expanded=True):
+                for slot_key, slot_entry in active_3day_slots:
                     c_sl_info, c_sl_acts = st.columns([2, 1.2])
                     with c_sl_info:
                         st.markdown(f"**{slot_entry.get('date')} • {slot_entry.get('time_slot')}** — {slot_entry.get('title')}")
-                        st.caption(f"📝 *{slot_entry.get('caption', '')[:120]}...*")
+                        st.caption(f"📝 *{slot_entry.get('caption', '')[:100]}...*")
                     with c_sl_acts:
                         c_p_now, c_u_now = st.columns(2)
                         with c_p_now:
-                            if st.button("🚀 Post Now", key=f"mgr_post_{slot_key}", use_container_width=True):
+                            if st.button("🚀 Post", key=f"mgr_post_{slot_key}", use_container_width=True):
                                 with st.spinner("Publishing scheduled video..."):
                                     res = scheduler.publish_slot_now(slot_key)
                                     if res.get("success"):
                                         st.success("Published successfully!")
                                     else:
-                                        st.error(f"Publish note: {res.get('error', 'Check account login')}")
+                                        st.error(f"Publish note: {res.get('error', 'Check login')}")
                                     st.rerun()
                         with c_u_now:
                             if st.button("❌ Remove", key=f"mgr_rm_{slot_key}", type="secondary", use_container_width=True):
@@ -2025,69 +2299,68 @@ elif (
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # Quick Manual Slot Booking Form
-        with st.expander("➕ Schedule Any Short to Specific Date & Time Slot", expanded=False):
-            if not unscheduled_shorts:
-                st.info("No unscheduled shorts ready in library. Generate new shorts in Section 1 or catch viral reels in Section 2.")
-            else:
-                c_sb1, c_sb2, c_sb3 = st.columns([1.5, 1, 1])
-                with c_sb1:
-                    chosen_short_item = st.selectbox(
-                        "Select Ready Short to Schedule:",
-                        options=unscheduled_shorts,
-                        format_func=lambda s: f"{s['title'][:40]} ({s['size_mb']} MB)",
-                        key="sel_manual_sched_short"
-                    )
-                with c_sb2:
-                    chosen_date = st.date_input("Target Date:", value=today, key="inp_manual_sched_date")
-                with c_sb3:
-                    chosen_slot = st.selectbox("Target Slot:", options=DAILY_SLOTS, key="sel_manual_sched_slot")
-
-                if st.button("📅 Confirm & Schedule Short", type="primary", use_container_width=True, key="btn_confirm_manual_sched"):
-                    date_key_str = chosen_date.strftime("%Y-%m-%d")
-                    res = scheduler.schedule_short(
-                        date_str=date_key_str,
-                        time_slot=chosen_slot,
-                        video_path=chosen_short_item["path"],
-                        platforms=["youtube", "instagram"]
-                    )
-                    if res.get("success"):
-                        st.success(f"🎉 Successfully scheduled '{chosen_short_item['title']}' for {chosen_slot} on {date_key_str}!")
-                        st.rerun()
-
     # ==========================================
-    # RIGHT COLUMN: READY UNSCHEDULED SHORTS TRAY
+    # RIGHT COLUMN: 🎬 READY TO PUBLISH VIDEO GALLERY
     # ==========================================
     with col_tray:
         st.markdown("<div class='pro-card'>", unsafe_allow_html=True)
         st.markdown(
             f"<div class='pro-card-header'>"
-            f"<span>Ready to Publish</span>"
+            f"<span>🎬 Ready Video Gallery</span>"
             f"<span class='pro-badge badge-green'>{len(unscheduled_shorts)} Ready</span>"
             f"</div>",
             unsafe_allow_html=True
         )
 
-        tray_search = st.text_input("🔍 Search ready shorts...", placeholder="Search by title or topic...", key="tray_search_query")
+        c_srch, c_page_ctrl = st.columns([1.8, 1.2])
+        with c_srch:
+            tray_search = st.text_input("🔍 Search gallery...", placeholder="Search title, caption...", key="tray_search_query", label_visibility="collapsed")
+        with c_page_ctrl:
+            items_per_page = 6
+            gal_page = st.session_state.get("gallery_current_page", 1)
 
         display_shorts = unscheduled_shorts
         if tray_search and tray_search.strip():
             q = tray_search.strip().lower()
-            display_shorts = [s for s in unscheduled_shorts if q in s["title"].lower() or q in s["caption"].lower()]
+            display_shorts = [s for s in unscheduled_shorts if q in s["title"].lower() or q in s["caption"].lower() or q in s.get("hashtags", "").lower()]
+
+        total_shorts = len(display_shorts)
+        total_pages = max(1, (total_shorts + items_per_page - 1) // items_per_page)
+        if gal_page > total_pages:
+            gal_page = total_pages
+            st.session_state.gallery_current_page = gal_page
+
+        start_idx = (gal_page - 1) * items_per_page
+        end_idx = start_idx + items_per_page
+        page_shorts = display_shorts[start_idx:end_idx]
+
+        if total_pages > 1:
+            c_p_prev, c_p_info, c_p_next = st.columns([1, 2, 1])
+            with c_p_prev:
+                if st.button("◀ Prev", key="btn_gal_prev", disabled=(gal_page <= 1), use_container_width=True):
+                    st.session_state.gallery_current_page = max(1, gal_page - 1)
+                    st.rerun()
+            with c_p_info:
+                st.markdown(f"<div style='text-align: center; font-size: 0.8rem; font-weight: 700; color: #475569; padding-top: 6px;'>Page {gal_page} / {total_pages} ({total_shorts} Videos)</div>", unsafe_allow_html=True)
+            with c_p_next:
+                if st.button("Next ▶", key="btn_gal_next", disabled=(gal_page >= total_pages), use_container_width=True):
+                    st.session_state.gallery_current_page = min(total_pages, gal_page + 1)
+                    st.rerun()
 
         if not display_shorts:
-            st.info("No unscheduled shorts found. Renders from Section 1 & Section 2 automatically show up here.")
+            st.info("No videos found in ready gallery. Generate new shorts in Section 1, catch viral reels in Section 2, or fragment videos in Section 3.")
         else:
-            for s_idx, s_item in enumerate(display_shorts):
+            for s_idx, s_item in enumerate(page_shorts):
                 s_path = Path(s_item["path"])
                 s_title = s_item["title"]
                 s_score = s_item["viral_score"]
+                card_id = f"gal_{gal_page}_{s_idx}_{s_path.stem}"
 
                 st.markdown(
-                    f"<div class='short-item-card'>"
+                    f"<div class='short-item-card' style='margin-bottom: 12px; padding: 14px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);'>"
                     f"<div style='display: flex; justify-content: space-between; align-items: start; gap: 8px; margin-bottom: 6px;'>"
-                    f"<div style='font-size: 0.88rem; font-weight: 700; color: #0f172a; line-height: 1.3;'>{s_title[:45]}</div>"
-                    f"<span class='pro-badge badge-blue'>{s_score}% Viral</span>"
+                    f"<div style='font-size: 0.92rem; font-weight: 700; color: #0f172a; line-height: 1.3;'>{s_title}</div>"
+                    f"<span class='pro-badge badge-blue' style='flex-shrink: 0;'>🔥 {s_score}% Viral</span>"
                     f"</div>"
                     f"<div style='font-size: 0.74rem; color: #64748b; margin-bottom: 8px;'>"
                     f"📁 <code>{s_item['name']}</code> • {s_item['size_mb']} MB"
@@ -2096,24 +2369,43 @@ elif (
                     unsafe_allow_html=True
                 )
 
-                # Expandable preview player and schedule actions
-                with st.expander(f"🎬 Preview & Schedule: {s_title[:28]}...", expanded=False):
-                    render_video_player(s_path, key_prefix=f"tray_prev_{s_path.stem}")
+                # 🎬 1. Direct Playable Video Player right on each card
+                if s_path.exists():
+                    st.video(str(s_path))
+                else:
+                    st.warning(f"Video file missing on disk: {s_path.name}")
 
-                    # Stored content-accurate caption display
-                    st.markdown("**📝 Stored AI Caption & Hashtags:**")
-                    st.caption(f"{s_item.get('caption', '')[:140]}...")
-                    st.code(s_item.get("hashtags", "#shorts #viral"), language=None)
+                # 2. Stored Topic-Accurate AI Caption & Hashtags
+                with st.expander("📝 View Stored AI Caption & Hashtags", expanded=False):
+                    st.caption(s_item.get('caption', ''))
+                    st.code(s_item.get("hashtags", "#shorts #viral #reels"), language=None)
 
-                    # 1-Click Schedule Action
-                    st.markdown("**📅 Schedule to Upcoming Slot:**")
+                # 3. Drag & Drop / 1-Click Scheduling to Next Available Slot
+                next_d, next_s = scheduler.find_next_available_slot(start_date_str=today.strftime("%Y-%m-%d"), days_ahead=3)
+                c_auto_drop, c_select_drop = st.columns([1.5, 1.1])
+                with c_auto_drop:
+                    if st.button(f"⚡ Drop to Next Slot ({next_s})", key=f"btn_autodrop_{card_id}", type="primary", use_container_width=True, help=f"Instantly schedule to next open daytime slot: {next_d} {next_s}"):
+                        res = scheduler.schedule_short(
+                            date_str=next_d,
+                            time_slot=next_s,
+                            video_path=str(s_path)
+                        )
+                        if res.get("success"):
+                            st.toast(f"🎉 Scheduled to {next_d} at {next_s}!", icon="📅")
+                            st.rerun()
+                with c_select_drop:
+                    if st.button("🎯 Select for Drop", key=f"btn_seldrop_{card_id}", use_container_width=True, help="Select this video to drop into any slot on the calendar"):
+                        st.session_state.selected_video_to_drop = str(s_path)
+                        st.rerun()
+
+                # Custom Slot Picker
+                with st.expander("📅 Custom Slot Drop Target", expanded=False):
                     c_sc_d, c_sc_t = st.columns(2)
                     with c_sc_d:
-                        sc_date = st.date_input("Date:", value=today, key=f"tray_d_{s_idx}_{s_path.stem}")
+                        sc_date = st.date_input("Date", value=today, key=f"inp_d_{card_id}")
                     with c_sc_t:
-                        sc_time = st.selectbox("Slot:", options=DAILY_SLOTS, key=f"tray_t_{s_idx}_{s_path.stem}")
-
-                    if st.button("📅 Schedule Video to Slot", key=f"btn_sched_tray_{s_idx}_{s_path.stem}", type="primary", use_container_width=True):
+                        sc_time = st.selectbox("Slot", options=DAILY_SLOTS, key=f"inp_t_{card_id}")
+                    if st.button("📥 Drop into Selected Slot", key=f"btn_sched_{card_id}", use_container_width=True):
                         d_str = sc_date.strftime("%Y-%m-%d")
                         res = scheduler.schedule_short(
                             date_str=d_str,
@@ -2121,13 +2413,14 @@ elif (
                             video_path=str(s_path)
                         )
                         if res.get("success"):
-                            st.toast(f"Scheduled '{s_title[:30]}' to {sc_time} on {d_str}!", icon="📅")
+                            st.toast(f"Scheduled '{s_title[:25]}' to {sc_time} on {d_str}!", icon="📅")
                             st.rerun()
 
-                    # Quick Direct Post & Delete
-                    c_dir_yt, c_dir_del = st.columns(2)
-                    with c_dir_yt:
-                        if st.button("🚀 Post YouTube Now", key=f"btn_tray_yt_{s_path.stem}", use_container_width=True):
+                # 4. Instant Action Toolbar: Post YouTube, Post Instagram, and Delete
+                c_dir_yt, c_dir_ig, c_dir_del = st.columns([1, 1, 1])
+                with c_dir_yt:
+                    if st.button("🚀 YouTube", key=f"btn_yt_{card_id}", use_container_width=True, help="Publish immediately to YouTube Shorts"):
+                        with st.spinner("Posting to YouTube Shorts..."):
                             res = publisher.publish_to_youtube(
                                 video_path=str(s_path),
                                 title=s_item["title"],
@@ -2138,11 +2431,28 @@ elif (
                                 st.success(f"Published: {res.get('url')}")
                             else:
                                 st.error(f"Error: {res.get('error')}")
-                    with c_dir_del:
-                        if st.button("🗑️ Delete Short", key=f"btn_tray_del_{s_path.stem}", type="secondary", use_container_width=True):
-                            if workspace_cleaner.delete_single_deliverable(str(s_path)):
-                                st.toast(f"Deleted {s_item['name']}", icon="🗑️")
-                                st.rerun()
+                with c_dir_ig:
+                    if st.button("🚀 Instagram", key=f"btn_ig_{card_id}", use_container_width=True, help="Publish immediately to Instagram Reels"):
+                        with st.spinner("Posting to Instagram Reels..."):
+                            full_c = f"{s_item['caption']}\n\n{s_item['hashtags']}".strip()
+                            res = publisher.publish_to_instagram(
+                                video_url_or_path=str(s_path),
+                                caption=full_c
+                            )
+                            if res.get("success"):
+                                st.success("Published to Instagram Reels!")
+                            else:
+                                st.error(f"Error: {res.get('error')}")
+                with c_dir_del:
+                    if st.button("🗑️ Delete", key=f"btn_del_{card_id}", type="secondary", use_container_width=True, help="Permanently delete this video and metadata from disk"):
+                        scheduler.unschedule_by_path(str(s_path))
+                        if workspace_cleaner.delete_single_deliverable(str(s_path)):
+                            st.toast(f"🗑️ Deleted {s_item['name']} successfully!", icon="🗑️")
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete video file.")
+
+                st.markdown("<hr style='margin: 14px 0; border: none; border-top: 1px solid #f1f5f9;'>", unsafe_allow_html=True)
 
         st.markdown("</div>", unsafe_allow_html=True)
 

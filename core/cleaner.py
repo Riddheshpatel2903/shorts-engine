@@ -216,21 +216,29 @@ class WorkspaceCleaner:
 
     def delete_single_deliverable(self, video_path: str) -> bool:
         """
-        Deletes a specific generated video and its associated thumbnail preview.
+        Deletes a specific generated video, its associated thumbnail preview,
+        and its sidecar .meta.json file cleanly.
         """
         try:
             p = Path(video_path)
             if p.exists() and p.is_file():
                 p.unlink()
-                # Also delete associated thumbnail cover if present
-                for thumb_ext in [".jpg", ".png", ".jpeg"]:
+                # Also delete associated thumbnail cover and metadata sidecar
+                for thumb_ext in [".jpg", ".png", ".jpeg", ".meta.json"]:
                     thumb = p.with_suffix(thumb_ext)
                     if thumb.exists():
                         try:
                             thumb.unlink()
                         except Exception:
                             pass
-                logger.info(f"Deleted deliverable: {p.name}")
+                # Check for cover_ prefix thumbnail in the same folder
+                cover_cand = p.parent / f"cover_{p.stem}.jpg"
+                if cover_cand.exists():
+                    try:
+                        cover_cand.unlink()
+                    except Exception:
+                        pass
+                logger.info(f"Deleted deliverable and sidecars: {p.name}")
                 return True
         except Exception as e:
             logger.error(f"Failed to delete deliverable {video_path}: {e}")
